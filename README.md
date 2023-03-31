@@ -1,1 +1,1 @@
-# YDB Dialect for SQLALchemy
+# YDB Dialect for SQLAlchemy
