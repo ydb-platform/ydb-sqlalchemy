@@ -12,7 +12,7 @@ from sqlalchemy.exc import CompileError
 from sqlalchemy.sql import functions, literal_column
 from sqlalchemy.sql.compiler import (
     IdentifierPreparer,
-    GenericTypeCompiler,
+    StrSQLTypeCompiler,
     StrSQLCompiler,
     DDLCompiler,
 )
@@ -38,7 +38,7 @@ class YqlIdentifierPreparer(IdentifierPreparer):
         return not (value.startswith(self.initial_quote) and value.endswith(self.final_quote))
 
 
-class YqlTypeCompiler(GenericTypeCompiler):
+class YqlTypeCompiler(StrSQLTypeCompiler):
     def visit_VARCHAR(self, type_, **kw):
         return "STRING"
 
@@ -160,7 +160,7 @@ class YqlCompiler(StrSQLCompiler):
         ) % {"expr": self.function_argspec(func, **kwargs)}
 
 
-class YqlDdlCompiler(DDLCompiler):
+class YqlDDLCompiler(DDLCompiler):
     pass
 
 
@@ -215,6 +215,7 @@ class YqlDialect(StrCompileDialect):
 
     supports_native_enum = False
     supports_native_boolean = True
+    supports_native_decimal = True
     supports_smallserial = False
 
     supports_sequences = False
@@ -231,7 +232,7 @@ class YqlDialect(StrCompileDialect):
 
     preparer = YqlIdentifierPreparer
     statement_compiler = YqlCompiler
-    ddl_compiler = YqlDdlCompiler
+    ddl_compiler = YqlDDLCompiler
     type_compiler = YqlTypeCompiler
 
     driver = ydb.Driver
