@@ -3,6 +3,8 @@ from decimal import Decimal
 import sqlalchemy as sa
 from sqlalchemy import MetaData, Table, Column, Integer, Unicode
 
+from datetime import date, datetime
+
 meta = MetaData()
 
 
@@ -144,5 +146,28 @@ def test_sa_select_complex(connection):
 
 
 def test_sa_types(connection):
-    # test selects/inserts with different columns types
-    pass
+    # selects/inserts with different columns types
+    types_tb = Table(
+        "test_types",
+        sa.MetaData(),
+        Column("id", Integer, primary_key=True),
+        Column("str", sa.String),
+        Column("num", sa.Float),
+        Column("bl", sa.Boolean),
+        Column("dt", sa.TIMESTAMP),
+        Column("date", sa.Date),
+        # Column("interval", sa.Interval),
+    )
+    types_tb.drop(bind=connection.engine, checkfirst=True)
+    types_tb.create(bind=connection.engine, checkfirst=True)
+
+    stm = types_tb.insert().values(
+        id=1,
+        str=b"Hello World!",
+        num=3.1415,
+        bl=True,
+        dt=datetime.now(),
+        date=date.today(),
+        # interval=timedelta(minutes=45),
+    )
+    connection.execute(stm)
