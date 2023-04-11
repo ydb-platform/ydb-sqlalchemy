@@ -3,8 +3,6 @@ import pytest
 import time
 import sqlalchemy as sa
 
-from ydb_sqlalchemy import register_dialect
-
 
 def wait_container_ready(driver):
     driver.wait(timeout=30)
@@ -37,7 +35,6 @@ def database():
 
 @pytest.fixture(scope="module")
 def engine(endpoint, database):
-    register_dialect()
     engine = sa.create_engine(
         "yql:///ydb/",
         connect_args={"database": database, "endpoint": endpoint},

@@ -6,7 +6,6 @@ import ydb
 import ydb_sqlalchemy.dbapi as dbapi
 
 import sqlalchemy as sa
-from sqlalchemy import dialects
 from sqlalchemy import Table
 from sqlalchemy.exc import CompileError
 from sqlalchemy.sql import functions, literal_column
@@ -298,11 +297,3 @@ class YqlDialect(StrCompileDialect):
         if context is not None and context.isddl:
             c = {"isddl": True}
         cursor.execute(statement, parameters, c)
-
-
-def register_dialect(
-    name="yql",
-    module=__name__,
-    cls="YqlDialect",
-):
-    return dialects.registry.register(name, module, cls)

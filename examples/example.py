@@ -4,7 +4,6 @@ import argparse
 import sqlalchemy as sa
 from sqlalchemy import orm, exc, sql
 from sqlalchemy import Table, Column, Integer, String, Float, TIMESTAMP
-from ydb_sqlalchemy import register_dialect
 
 from fill_tables import fill_all_tables, to_days
 from models import Base, Series, Episodes
@@ -207,7 +206,6 @@ def main():
     )
 
     args = parser.parse_args()
-    register_dialect()
     engine = sa.create_engine(
         "yql:///ydb/",
         connect_args={"database": args.database, "endpoint": args.endpoint},
@@ -216,8 +214,8 @@ def main():
     logging.basicConfig(level=logging.INFO)
     logging.getLogger("_sqlalchemy.engine").setLevel(logging.INFO)
 
-    # run_example_core(engine)
-    run_example_orm(engine)
+    run_example_core(engine)
+    # run_example_orm(engine)
 
 
 if __name__ == "__main__":
