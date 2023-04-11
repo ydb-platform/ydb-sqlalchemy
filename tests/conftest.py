@@ -86,6 +86,6 @@ def ydb_session(driver_sync):
 
 @pytest.fixture
 def test_table(ydb_session):
-    ydb_session.execute_scheme("CREATE TABLE test(id Int64 NOT NULL, value TEXT, num DECIMAL(22, 9), PRIMARY KEY (id))")
+    ydb_session.execute_scheme("CREATE TABLE test(id Int64 NOT NULL, value UTF8, num DECIMAL(22, 9), PRIMARY KEY (id))")
     yield
     ydb_session.execute_scheme("DROP TABLE test")
