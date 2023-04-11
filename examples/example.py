@@ -191,7 +191,7 @@ def run_example_core(engine):
 def main():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        description="""\033[92mYandex.Database examples ydb_sqlalchemy usage.\x1b[0m\n""",
+        description="""YDB examples ydb-sqlalchemy usage""",
     )
     parser.add_argument(
         "-d",
