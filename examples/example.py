@@ -1,6 +1,5 @@
 import datetime
 import logging
-import argparse
 import sqlalchemy as sa
 from sqlalchemy import orm, exc, sql
 from sqlalchemy import Table, Column, Integer, String, Float, TIMESTAMP
@@ -188,28 +187,7 @@ def run_example_core(engine):
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        description="""YDB examples ydb-sqlalchemy usage""",
-    )
-    parser.add_argument(
-        "-d",
-        "--database",
-        help="Name of the database to use",
-        default="/local",
-    )
-    parser.add_argument(
-        "-e",
-        "--endpoint",
-        help="Endpoint url to use",
-        default="grpc://localhost:2136",
-    )
-
-    args = parser.parse_args()
-    engine = sa.create_engine(
-        "yql:///ydb/",
-        connect_args={"database": args.database, "endpoint": args.endpoint},
-    )
+    engine = sa.create_engine("yql+ydb://localhost:2136/local")
 
     logging.basicConfig(level=logging.INFO)
     logging.getLogger("_sqlalchemy.engine").setLevel(logging.INFO)

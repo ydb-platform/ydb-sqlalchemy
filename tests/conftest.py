@@ -1,7 +1,14 @@
 import ydb
-import pytest
 import time
 import sqlalchemy as sa
+
+from sqlalchemy.dialects import registry
+import pytest
+
+registry.register("yql.ydb", "ydb_sqlalchemy.sqlalchemy", "YqlDialect")
+pytest.register_assert_rewrite("sqlalchemy.testing.assertions")
+
+# from sqlalchemy.testing.plugin.pytestplugin import *
 
 
 def wait_container_ready(driver):
@@ -35,11 +42,7 @@ def database():
 
 @pytest.fixture(scope="module")
 def engine(endpoint, database):
-    engine = sa.create_engine(
-        "yql:///ydb/",
-        connect_args={"database": database, "endpoint": endpoint},
-    )
-
+    engine = sa.create_engine("yql+ydb://localhost:2136/local")
     yield engine
     engine.dispose()
 

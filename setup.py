@@ -36,7 +36,7 @@ setuptools.setup(
     },
     entry_points={
         "sqlalchemy.dialects": [
-            "yql = ydb_sqlalchemy.sqlalchemy:YqlDialect",
+            "yql.ydb=ydb_sqlalchemy.sqlalchemy:YqlDialect",
         ]
     },
 )

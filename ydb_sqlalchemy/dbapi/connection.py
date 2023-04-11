@@ -6,8 +6,8 @@ from .errors import DatabaseError
 
 
 class Connection:
-    def __init__(self, endpoint, database=None, **conn_kwargs):
-        self.endpoint = endpoint
+    def __init__(self, endpoint=None, host=None, port=None, database=None, **conn_kwargs):
+        self.endpoint = endpoint or f"grpc://{host}:{port}"
         self.database = database
         self.driver = self._create_driver(self.endpoint, self.database, **conn_kwargs)
         self.pool = ydb.SessionPool(self.driver)
