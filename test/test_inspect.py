@@ -8,9 +8,9 @@ def test_get_columns(engine, test_table):
         c["type"] = type(c["type"])
 
     assert columns == [
-        {"name": "id", "type": sa.INTEGER, "nullable": False},
-        {"name": "value", "type": sa.TEXT, "nullable": True},
-        {"name": "num", "type": sa.DECIMAL, "nullable": True},
+        {"name": "id", "type": sa.INTEGER, "nullable": False, "default": None},
+        {"name": "value", "type": sa.TEXT, "nullable": True, "default": None},
+        {"name": "num", "type": sa.DECIMAL, "nullable": True, "default": None},
     ]
 
 

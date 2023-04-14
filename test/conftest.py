@@ -8,7 +8,7 @@ import pytest
 registry.register("yql.ydb", "ydb_sqlalchemy.sqlalchemy", "YqlDialect")
 pytest.register_assert_rewrite("sqlalchemy.testing.assertions")
 
-# from sqlalchemy.testing.plugin.pytestplugin import *
+from sqlalchemy.testing.plugin.pytestplugin import *
 
 
 def wait_container_ready(driver):

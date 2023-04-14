@@ -151,6 +151,7 @@ def test_sa_types(connection):
         "test_types",
         sa.MetaData(),
         Column("id", Integer, primary_key=True),
+        # Column("bin", sa.BINARY),
         Column("str", sa.String),
         Column("num", sa.Float),
         Column("bl", sa.Boolean),
@@ -163,7 +164,8 @@ def test_sa_types(connection):
 
     stm = types_tb.insert().values(
         id=1,
-        str=b"Hello World!",
+        # bin=b"abc",
+        str="Hello World!",
         num=3.1415,
         bl=True,
         dt=datetime.now(),

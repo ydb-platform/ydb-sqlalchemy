@@ -7,9 +7,10 @@ import ydb_sqlalchemy.dbapi as dbapi
 
 import sqlalchemy as sa
 from sqlalchemy import Table
-from sqlalchemy.exc import CompileError
+from sqlalchemy.exc import CompileError, NoSuchTableError
 from sqlalchemy.sql import functions, literal_column
 from sqlalchemy.sql.compiler import (
+    selectable,
     IdentifierPreparer,
     StrSQLTypeCompiler,
     StrSQLCompiler,
@@ -22,6 +23,16 @@ from sqlalchemy.util.compat import inspect_getfullargspec
 from typing import Any
 
 from .types import UInt32, UInt64
+
+
+COMPOUND_KEYWORDS = {
+    selectable.CompoundSelect.UNION: "UNION ALL",
+    selectable.CompoundSelect.UNION_ALL: "UNION ALL",
+    selectable.CompoundSelect.EXCEPT: "EXCEPT",
+    selectable.CompoundSelect.EXCEPT_ALL: "EXCEPT ALL",
+    selectable.CompoundSelect.INTERSECT: "INTERSECT",
+    selectable.CompoundSelect.INTERSECT_ALL: "INTERSECT ALL",
+}
 
 
 class YqlIdentifierPreparer(IdentifierPreparer):
@@ -38,8 +49,11 @@ class YqlIdentifierPreparer(IdentifierPreparer):
 
 
 class YqlTypeCompiler(StrSQLTypeCompiler):
+    def visit_CHAR(self, type_, **kw):
+        return "UTF8"
+
     def visit_VARCHAR(self, type_, **kw):
-        return "STRING"
+        return "UTF8"
 
     def visit_unicode(self, type_, **kw):
         return "UTF8"
@@ -71,6 +85,15 @@ class YqlTypeCompiler(StrSQLTypeCompiler):
     def visit_NUMERIC(self, type_, **kw):
         return "Int64"
 
+    def visit_BINARY(self, type_, **kw):
+        return "String"
+
+    def visit_BLOB(self, type_, **kw):
+        return "String"
+
+    def visit_DATETIME(self, type_, **kw):
+        return "Timestamp"
+
 
 class ParametrizedFunction(functions.Function):
     __visit_name__ = "parametrized_function"
@@ -83,6 +106,8 @@ class ParametrizedFunction(functions.Function):
 
 
 class YqlCompiler(StrSQLCompiler):
+    compound_keywords = COMPOUND_KEYWORDS
+
     def render_bind_cast(self, type_, dbapi_type, sqltext):
         pass
 
@@ -178,7 +203,7 @@ COLUMN_TYPES = {
     ydb.PrimitiveType.Uint64: UInt64,
     ydb.PrimitiveType.Float: sa.FLOAT,
     ydb.PrimitiveType.Double: sa.FLOAT,
-    ydb.PrimitiveType.String: sa.TEXT,
+    ydb.PrimitiveType.String: sa.BINARY,
     ydb.PrimitiveType.Utf8: sa.TEXT,
     ydb.PrimitiveType.Json: sa.JSON,
     ydb.PrimitiveType.JsonDocument: sa.JSON,
@@ -216,9 +241,15 @@ class YqlDialect(StrCompileDialect):
     supports_native_boolean = True
     supports_native_decimal = True
     supports_smallserial = False
+    supports_schemas = False
+    supports_constraint_comments = False
+
+    insert_returning = False
+    update_returning = False
+    delete_returning = False
 
     supports_sequences = False
-    sequences_optional = True
+    sequences_optional = False
     preexecute_autoincrement_sequences = True
     postfetch_lastrowid = False
 
@@ -242,12 +273,15 @@ class YqlDialect(StrCompileDialect):
 
     def get_columns(self, connection, table_name, schema=None, **kw):
         if schema is not None:
-            raise dbapi.errors.NotSupportedError("unsupported on non empty schema")
+            raise dbapi.NotSupportedError("unsupported on non empty schema")
 
-        qt = table_name.name if isinstance(table_name, Table) else table_name
-
+        qt = table_name if isinstance(table_name, str) else table_name.name
         raw_conn = connection.connection
-        columns = raw_conn.describe(qt)
+        try:
+            columns = raw_conn.describe(qt)
+        except dbapi.DatabaseError as e:
+            raise NoSuchTableError(qt) from e
+
         as_compatible = []
         for column in columns:
             col_type, nullable = _get_column_info(column.type)
@@ -256,24 +290,31 @@ class YqlDialect(StrCompileDialect):
                     "name": column.name,
                     "type": col_type,
                     "nullable": nullable,
+                    "default": None,
                 }
             )
 
         return as_compatible
 
+    def get_table_names(self, connection, schema=None, **kw):
+        if schema:
+            raise dbapi.NotSupportedError("unsupported on non empty schema")
+
+        driver = connection.connection.driver_connection.driver
+        db_path = driver._driver_config.database
+        children = driver.scheme_client.list_directory(db_path).children
+
+        return [child.name for child in children if child.is_table()]
+
     def has_table(self, connection, table_name, schema=None, **kwargs):
         if schema:
-            raise dbapi.errors.NotSupportedError("unsupported on non empty schema")
+            raise dbapi.NotSupportedError("unsupported on non empty schema")
 
-        quote = self.identifier_preparer.quote_identifier
-        qtable = quote(table_name)
-
-        # TODO: use `get_columns` instead.
-        statement = "SELECT * FROM " + qtable
+        raw_conn = connection.connection
         try:
-            connection.execute(sa.text(statement))
+            raw_conn.describe(table_name)
             return True
-        except Exception:
+        except dbapi.DatabaseError:
             return False
 
     def get_pk_constraint(self, connection, table_name, schema=None, **kwargs):
