@@ -72,11 +72,13 @@ def test_generate_declare_stm():
 
 def test_generate_full_stm():
     assert _generate_full_stm("select 1") == ("select 1", None)
-    assert _generate_full_stm("select $p1 as value", {"p1": 1}) == (
+    assert _generate_full_stm("select %(p1)s as value", {"p1": 1}) == (
         "DECLARE $p1 AS Int64; select $p1 as value",
         {"$p1": 1},
     )
-    assert _generate_full_stm("select $p1 as value1, $P2 as value2", {"p1": 1, "P2": "123"}) == (
+    assert _generate_full_stm("select %(p1)s as value1, %(P2)s as value2", {"p1": 1, "P2": "123"}) == (
         "DECLARE $p1 AS Int64; DECLARE $P2 AS Utf8; select $p1 as value1, $P2 as value2",
         {"$p1": 1, "$P2": "123"},
     )
+
+    assert _generate_full_stm("select %(p1)s as value", {"p1": None}) == ("select NULL as value", {})

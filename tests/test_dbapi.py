@@ -97,6 +97,10 @@ def test_cursor(endpoint, database):
     assert cur.rowcount == 7, "rowcount ok"
     assert cur.fetchall() == [(1,), (2,), (3,), (5,), (6,), (17,), (21,)], "ok"
 
+    cur.execute("INSERT INTO test(id) VALUES (37)")
+    cur.execute("SELECT id FROM test WHERE text IS %(p)s", {"p": None})
+    assert not cur.fetchone() == (37,)
+
     cur.execute("DROP TABLE test", context={"isddl": True})
 
     cur.close()
