@@ -76,8 +76,8 @@ def _generate_full_stm(sql: str, params: Optional[Dict[str, Any]] = None) -> (st
     if params:
         for name in params.keys():
             check_identifier_valid(name)
-        sql = sql % {k: f"${k}" for k, v in params.items()}
-        sql_params = {f"${k}": v for k, v in params.items()}
+        sql = sql % {k: f"${k}" if v is not None else "NULL" for k, v in params.items()}
+        sql_params = {f"${k}": v for k, v in params.items() if v is not None}
         declare_stms = _generate_declare_stms(sql_params)
         sql = f"{declare_stms}{sql}"
 
