@@ -93,7 +93,8 @@ class YqlTypeCompiler(StrSQLTypeCompiler):
         return "Int64"
 
     def visit_NUMERIC(self, type_, **kw):
-        return "Int64"
+        """Only Decimal(22,9) is supported for table columns"""
+        return f"Decimal({type_.precision}, {type_.scale})"
 
     def visit_BINARY(self, type_, **kw):
         return "String"
