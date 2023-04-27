@@ -81,7 +81,7 @@ def _generate_full_stm(sql: str, params: Optional[Dict[str, Any]] = None) -> (st
         declare_stms = _generate_declare_stms(sql_params)
         sql = f"{declare_stms}{sql}"
 
-    return sql, sql_params
+    return sql.replace("%%", "%"), sql_params
 
 
 class Cursor(object):

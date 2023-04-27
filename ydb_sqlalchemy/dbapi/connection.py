@@ -18,8 +18,7 @@ class Connection:
     def describe(self, table_path):
         full_path = posixpath.join(self.database, table_path)
         try:
-            res = self.pool.retry_operation_sync(lambda cli: cli.describe_table(full_path))
-            return res.columns
+            return self.pool.retry_operation_sync(lambda cli: cli.describe_table(full_path))
         except ydb.Error as e:
             raise DatabaseError(e.message, e.issues, e.status)
         except Exception:

@@ -20,7 +20,7 @@ def test_connection(endpoint, database):
 
     assert conn.check_exists("/local/foo")
 
-    col = conn.describe("/local/foo")[0]
+    col = conn.describe("/local/foo").columns[0]
     assert col.name == "id"
     assert col.type == ydb.PrimitiveType.Int64
 

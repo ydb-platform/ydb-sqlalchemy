@@ -6,7 +6,6 @@ import ydb
 import ydb_sqlalchemy.dbapi as dbapi
 
 import sqlalchemy as sa
-from sqlalchemy import Table
 from sqlalchemy.exc import CompileError, NoSuchTableError
 from sqlalchemy.sql import functions, literal_column
 from sqlalchemy.sql.compiler import (
@@ -24,6 +23,17 @@ from typing import Any
 
 from .types import UInt32, UInt64
 
+STR_QUOTE_MAP = {
+    "'": "\\'",
+    "\\": "\\\\",
+    "\0": "\\0",
+    "\b": "\\b",
+    "\f": "\\f",
+    "\r": "\\r",
+    "\n": "\\n",
+    "\t": "\\t",
+    "%": "%%",
+}
 
 COMPOUND_KEYWORDS = {
     selectable.CompoundSelect.UNION: "UNION ALL",
@@ -115,6 +125,12 @@ class YqlCompiler(StrSQLCompiler):
         # Hack to ensure it is possible to define labels in groupby.
         kw.update(within_columns_clause=True)
         return super(YqlCompiler, self).group_by_clause(select, **kw)
+
+    def render_literal_value(self, value, type_):
+        if isinstance(value, str):
+            value = "".join(STR_QUOTE_MAP.get(x, x) for x in value)
+            return f"'{value}'"
+        return super().render_literal_value(value, type_)
 
     def visit_lambda(self, lambda_, **kw):
         func = lambda_.func
@@ -271,19 +287,21 @@ class YqlDialect(StrCompileDialect):
     def import_dbapi(cls: Any):
         return dbapi
 
-    def get_columns(self, connection, table_name, schema=None, **kw):
+    def _describe_table(self, connection, table_name, schema=None):
         if schema is not None:
             raise dbapi.NotSupportedError("unsupported on non empty schema")
 
         qt = table_name if isinstance(table_name, str) else table_name.name
         raw_conn = connection.connection
         try:
-            columns = raw_conn.describe(qt)
+            return raw_conn.describe(qt)
         except dbapi.DatabaseError as e:
             raise NoSuchTableError(qt) from e
 
+    def get_columns(self, connection, table_name, schema=None, **kw):
+        table = self._describe_table(connection, table_name, schema)
         as_compatible = []
-        for column in columns:
+        for column in table.columns:
             col_type, nullable = _get_column_info(column.type)
             as_compatible.append(
                 {
@@ -307,19 +325,15 @@ class YqlDialect(StrCompileDialect):
         return [child.name for child in children if child.is_table()]
 
     def has_table(self, connection, table_name, schema=None, **kwargs):
-        if schema:
-            raise dbapi.NotSupportedError("unsupported on non empty schema")
-
-        raw_conn = connection.connection
         try:
-            raw_conn.describe(table_name)
+            self._describe_table(connection, table_name, schema)
             return True
-        except dbapi.DatabaseError:
+        except NoSuchTableError:
             return False
 
     def get_pk_constraint(self, connection, table_name, schema=None, **kwargs):
-        # TODO: implement me
-        return []
+        table = self._describe_table(connection, table_name, schema)
+        return {"constrained_columns": table.primary_key, "name": None}
 
     def get_foreign_keys(self, connection, table_name, schema=None, **kwargs):
         # foreign keys unsupported
