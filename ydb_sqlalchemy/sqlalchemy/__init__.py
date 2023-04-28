@@ -68,6 +68,9 @@ class YqlTypeCompiler(StrSQLTypeCompiler):
     def visit_unicode(self, type_, **kw):
         return "UTF8"
 
+    def visit_uuid(self, type_, **kw):
+        return "UTF8"
+
     def visit_NVARCHAR(self, type_, **kw):
         return "UTF8"
 

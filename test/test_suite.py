@@ -19,6 +19,7 @@ from sqlalchemy.testing.suite.test_types import (
     TrueDivTest as _TrueDivTest,
     TimeTest as _TimeTest,
     StringTest as _StringTest,
+    NativeUUIDTest as _NativeUUIDTest,
     TimeMicrosecondsTest as _TimeMicrosecondsTest,
     DateTimeCoercedToDateTimeTest as _DateTimeCoercedToDateTimeTest,
 )
@@ -363,6 +364,11 @@ class StringTest(_StringTest):
         foo = Table("foo", metadata, Column("one", String, primary_key=True))
         foo.create(config.db)
         foo.drop(config.db)
+
+
+@pytest.mark.skip("uuid unsupported for columns")
+class NativeUUIDTest(_NativeUUIDTest):
+    pass
 
 
 @pytest.mark.skip("unsupported Time data type")
