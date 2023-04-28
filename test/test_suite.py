@@ -3,7 +3,10 @@ import sqlalchemy as sa
 import sqlalchemy.testing.suite.test_types
 from sqlalchemy.testing.suite import *
 
-from sqlalchemy.testing.suite.test_select import CompoundSelectTest as _CompoundSelectTest
+from sqlalchemy.testing.suite.test_select import (
+    ExistsTest as _ExistsTest,
+    CompoundSelectTest as _CompoundSelectTest
+)
 from sqlalchemy.testing.suite.test_reflection import (
     HasTableTest as _HasTableTest,
     HasIndexTest as _HasIndexTest,
@@ -30,6 +33,7 @@ from sqlalchemy.testing.suite.test_select import (
     FetchLimitOffsetTest as _FetchLimitOffsetTest,
     DistinctOnTest as _DistinctOnTest
 )
+from sqlalchemy.testing.suite.test_ddl import LongNameBlowoutTest as _LongNameBlowoutTest
 from sqlalchemy.testing.suite.test_deprecations import DeprecatedCompoundSelectTest as _DeprecatedCompoundSelectTest
 
 
@@ -246,6 +250,25 @@ class TrueDivTest(_TrueDivTest):
         pass
 
 
+class ExistsTest(_ExistsTest):
+    """
+    YDB says: Filtering is not allowed without FROM so rewrite queries
+    """
+    def test_select_exists(self, connection):
+        stuff = self.tables.stuff
+        eq_(
+            connection.execute(select(exists().where(stuff.c.data == "some data"))).fetchall(),
+            [(True, )]
+        )
+
+    def test_select_exists_false(self, connection):
+        stuff = self.tables.stuff
+        eq_(
+            connection.execute(select(exists().where(stuff.c.data == "no data"))).fetchall(),
+            [(False, )]
+        )
+
+
 class CompoundSelectTest(_CompoundSelectTest):
     @pytest.mark.skip("limit don't work")
     def test_distinct_selectable_in_unions(self):
@@ -378,6 +401,11 @@ class TimeMicrosecondsTest(_TimeMicrosecondsTest):
 
 @pytest.mark.skip("unsupported coerce dates from datetime")
 class DateTimeCoercedToDateTimeTest(_DateTimeCoercedToDateTimeTest):
+    pass
+
+
+@pytest.mark.skip("named constraints unsupported")
+class LongNameBlowoutTest(_LongNameBlowoutTest):
     pass
 
 

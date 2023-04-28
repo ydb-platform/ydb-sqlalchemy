@@ -59,3 +59,8 @@ class Requirements(SuiteRequirements):
     @property
     def insert_returning(self):
         return exclusions.closed()
+
+    @property
+    def autoincrement_without_sequence(self):
+        # YDB doesn't support autoincrement
+        return exclusions.closed()
