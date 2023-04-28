@@ -61,6 +61,15 @@ class Requirements(SuiteRequirements):
         return exclusions.closed()
 
     @property
+    def autoincrement_insert(self):
+        # YDB doesn't support autoincrement
+        return exclusions.closed()
+
+    @property
     def autoincrement_without_sequence(self):
         # YDB doesn't support autoincrement
+        return exclusions.closed()
+
+    @property
+    def duplicate_names_in_cursor_description(self):
         return exclusions.closed()

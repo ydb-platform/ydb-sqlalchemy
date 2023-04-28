@@ -1,6 +1,7 @@
 import pytest
 import sqlalchemy as sa
 import sqlalchemy.testing.suite.test_types
+
 from sqlalchemy.testing.suite import *
 
 from sqlalchemy.testing.suite.test_select import (
@@ -31,9 +32,10 @@ from sqlalchemy.testing.suite.test_select import (
     JoinTest as _JoinTest,
     OrderByLabelTest as _OrderByLabelTest,
     FetchLimitOffsetTest as _FetchLimitOffsetTest,
-    DistinctOnTest as _DistinctOnTest
 )
+from sqlalchemy.testing.suite.test_insert import InsertBehaviorTest as _InsertBehaviorTest
 from sqlalchemy.testing.suite.test_ddl import LongNameBlowoutTest as _LongNameBlowoutTest
+from sqlalchemy.testing.suite.test_results import RowFetchTest as _RowFetchTest
 from sqlalchemy.testing.suite.test_deprecations import DeprecatedCompoundSelectTest as _DeprecatedCompoundSelectTest
 
 
@@ -367,11 +369,14 @@ class FetchLimitOffsetTest(_FetchLimitOffsetTest):
         pass
 
 
-class DistinctOnTest(_DistinctOnTest):
-    def test_distinct_on(self):
-        stm = select("*").distinct(column("q")).select_from(table("foo"))
-        # add quotes ``
-        self.assert_compile(stm, "SELECT DISTINCT * FROM `foo`")
+class InsertBehaviorTest(_InsertBehaviorTest):
+    @pytest.mark.skip("autoincrement unsupported")
+    def test_insert_from_select_autoinc(self, connection):
+        pass
+
+    @pytest.mark.skip("autoincrement unsupported")
+    def test_insert_from_select_autoinc_no_rows(self, connection):
+        pass
 
 
 @pytest.mark.skip("unsupported Time data type")
@@ -407,6 +412,12 @@ class DateTimeCoercedToDateTimeTest(_DateTimeCoercedToDateTimeTest):
 @pytest.mark.skip("named constraints unsupported")
 class LongNameBlowoutTest(_LongNameBlowoutTest):
     pass
+
+
+class RowFetchTest(_RowFetchTest):
+    @pytest.mark.skip("scalar subquery unsupported")
+    def test_row_w_scalar_select(self, connection):
+        pass
 
 
 @pytest.mark.skip("TODO: try it after limit/offset tests would fixed")

@@ -46,16 +46,13 @@ COMPOUND_KEYWORDS = {
 
 
 class YqlIdentifierPreparer(IdentifierPreparer):
+    # TODO: validate reserved_words
     def __init__(self, dialect):
         super(YqlIdentifierPreparer, self).__init__(
             dialect,
             initial_quote="`",
             final_quote="`",
         )
-
-    def _requires_quotes(self, value):
-        # Force all identifiers to get quoted unless already quoted.
-        return not (value.startswith(self.initial_quote) and value.endswith(self.final_quote))
 
 
 class YqlTypeCompiler(StrSQLTypeCompiler):
@@ -252,6 +249,8 @@ def _get_column_info(t):
 
 class YqlDialect(StrCompileDialect):
     name = "yql"
+    driver = "ydb"
+
     supports_alter = False
     max_identifier_length = 63
     supports_sane_rowcount = False
@@ -284,8 +283,6 @@ class YqlDialect(StrCompileDialect):
     statement_compiler = YqlCompiler
     ddl_compiler = YqlDDLCompiler
     type_compiler = YqlTypeCompiler
-
-    driver = ydb.Driver
 
     @classmethod
     def import_dbapi(cls: Any):
