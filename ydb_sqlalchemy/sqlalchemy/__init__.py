@@ -4,6 +4,7 @@ Work in progress, breaking changes are possible.
 """
 import ydb
 import ydb_sqlalchemy.dbapi as dbapi
+from ydb_sqlalchemy.dbapi.constants import YDB_KEYWORDS
 
 import sqlalchemy as sa
 from sqlalchemy.exc import CompileError, NoSuchTableError
@@ -46,7 +47,9 @@ COMPOUND_KEYWORDS = {
 
 
 class YqlIdentifierPreparer(IdentifierPreparer):
-    # TODO: validate reserved_words
+    reserved_words = IdentifierPreparer.reserved_words
+    reserved_words.update(YDB_KEYWORDS)
+
     def __init__(self, dialect):
         super(YqlIdentifierPreparer, self).__init__(
             dialect,

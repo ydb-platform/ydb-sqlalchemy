@@ -164,7 +164,7 @@ class ComponentReflectionTestExtra(_ComponentReflectionTestExtra):
         t.create(connection)
         return [c["type"] for c in inspect(connection).get_columns("t")]
 
-    @pytest.mark.skip("TODO: numeric now int64??")
+    @pytest.mark.skip("YDB: Only Decimal(22,9) is supported for table columns")
     def test_numeric_reflection(self):
         pass
 
