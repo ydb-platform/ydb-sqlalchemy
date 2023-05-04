@@ -2,11 +2,15 @@ import pytest
 import sqlalchemy as sa
 import sqlalchemy.testing.suite.test_types
 
-from sqlalchemy.testing.suite import *
+from sqlalchemy.testing.suite import *  # noqa: F401, F403
+
+from sqlalchemy.testing.suite import eq_, testing, inspect, provide_metadata, config, requirements
+from sqlalchemy.testing.suite import func, column, literal_column, select, exists
+from sqlalchemy.testing.suite import MetaData, Column, Table, Integer, String
 
 from sqlalchemy.testing.suite.test_select import (
     ExistsTest as _ExistsTest,
-    CompoundSelectTest as _CompoundSelectTest
+    CompoundSelectTest as _CompoundSelectTest,
 )
 from sqlalchemy.testing.suite.test_reflection import (
     HasTableTest as _HasTableTest,
@@ -27,7 +31,10 @@ from sqlalchemy.testing.suite.test_types import (
     TimeMicrosecondsTest as _TimeMicrosecondsTest,
     DateTimeCoercedToDateTimeTest as _DateTimeCoercedToDateTimeTest,
 )
-from sqlalchemy.testing.suite.test_dialect import DifficultParametersTest as _DifficultParametersTest
+from sqlalchemy.testing.suite.test_dialect import (
+    EscapingTest as _EscapingTest,
+    DifficultParametersTest as _DifficultParametersTest,
+)
 from sqlalchemy.testing.suite.test_select import (
     JoinTest as _JoinTest,
     OrderByLabelTest as _OrderByLabelTest,
@@ -126,9 +133,7 @@ class ComponentReflectionTest(_ComponentReflectionTest):
         pass
 
     @testing.combinations(False, argnames="use_schema")  # scheme unsupported
-    @testing.combinations(
-        (True, testing.requires.views), False, argnames="views"
-    )
+    @testing.combinations((True, testing.requires.views), False, argnames="views")
     def test_metadata(self, connection, use_schema, views):
         pass
 
@@ -183,10 +188,7 @@ class ComponentReflectionTestExtra(_ComponentReflectionTestExtra):
         )
         t.create(connection)
         eq_(
-            {
-                col["name"]: col["nullable"]
-                for col in inspect(connection).get_columns("t")
-            },
+            {col["name"]: col["nullable"] for col in inspect(connection).get_columns("t")},
             {"a": True, "b": False},
         )
 
@@ -256,19 +258,14 @@ class ExistsTest(_ExistsTest):
     """
     YDB says: Filtering is not allowed without FROM so rewrite queries
     """
+
     def test_select_exists(self, connection):
         stuff = self.tables.stuff
-        eq_(
-            connection.execute(select(exists().where(stuff.c.data == "some data"))).fetchall(),
-            [(True, )]
-        )
+        eq_(connection.execute(select(exists().where(stuff.c.data == "some data"))).fetchall(), [(True,)])
 
     def test_select_exists_false(self, connection):
         stuff = self.tables.stuff
-        eq_(
-            connection.execute(select(exists().where(stuff.c.data == "no data"))).fetchall(),
-            [(False, )]
-        )
+        eq_(connection.execute(select(exists().where(stuff.c.data == "no data"))).fetchall(), [(False,)])
 
 
 class CompoundSelectTest(_CompoundSelectTest):
@@ -291,6 +288,29 @@ class CompoundSelectTest(_CompoundSelectTest):
     @pytest.mark.skip("union with brackets don't work")
     def test_limit_offset_selectable_in_unions(self):
         pass
+
+
+class EscapingTest(_EscapingTest):
+    @provide_metadata
+    def test_percent_sign_round_trip(self):
+        """test that the DBAPI accommodates for escaped / nonescaped
+        percent signs in a way that matches the compiler
+
+        """
+        m = self.metadata
+        # table without pk unsupported
+        t = Table("t", m, Column("data", String(50), primary_key=True))
+        t.create(config.db)
+        with config.db.begin() as conn:
+            conn.execute(t.insert(), dict(data="some % value"))
+            conn.execute(t.insert(), dict(data="some %% other value"))
+
+            eq_(conn.scalar(select(t.c.data).where(t.c.data == literal_column("'some % value'"))), "some % value")
+
+            eq_(
+                conn.scalar(select(t.c.data).where(t.c.data == literal_column("'some %% other value'"))),
+                "some %% other value",
+            )
 
 
 @pytest.mark.skip("unsupported tricky names for columns")
@@ -321,9 +341,7 @@ class OrderByLabelTest(_OrderByLabelTest):
         """
         table = self.tables.some_table
         expr = (table.c.x + table.c.y).label("lx")
-        stmt = (
-            select(func.count(table.c.id), column("lx")).group_by(expr).order_by(column("lx"))
-        )
+        stmt = select(func.count(table.c.id), column("lx")).group_by(expr).order_by(column("lx"))
         self._assert_result(stmt, [(1, 3), (1, 5), (1, 7)])
 
 

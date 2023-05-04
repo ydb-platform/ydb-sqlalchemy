@@ -1,14 +1,11 @@
 sqlalchemy==2.0.7
 ydb==3.2.0
 
+requests<2.29
 pytest==7.2.2
 docker==6.0.1
 docker-compose==1.29.2
 dockerpty==0.4.1
-pytest-docker-compose==3.2.1
-pytest-pep8
 flake8==3.9.2
-pytest-flake8
 black==23.3.0
-pylint-protobuf
 pytest-cov

@@ -40,7 +40,7 @@ def test_types(conn):
 
     stm = types_tb.insert().values(
         id=1,
-        str=b"Hello World!",
+        str="Hello World!",
         num=3.1415,
         dt=datetime.datetime.now(),
     )

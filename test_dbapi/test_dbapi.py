@@ -4,35 +4,29 @@ import ydb
 import ydb_sqlalchemy.dbapi as dbapi
 
 
-def test_connection(endpoint, database):
-    conn = dbapi.connect(endpoint, database=database)
-    assert conn
+def test_connection(connection):
+    connection.commit()
+    connection.rollback()
 
-    conn.commit()
-    conn.rollback()
-
-    assert not conn.check_exists("/local/foo")
+    assert not connection.check_exists("/local/foo")
     with pytest.raises(dbapi.DatabaseError):
-        conn.describe("/local/foo")
+        connection.describe("/local/foo")
 
-    cur = conn.cursor()
+    cur = connection.cursor()
     cur.execute("CREATE TABLE foo(id Int64 NOT NULL, PRIMARY KEY (id))", context={"isddl": True})
 
-    assert conn.check_exists("/local/foo")
+    assert connection.check_exists("/local/foo")
 
-    col = conn.describe("/local/foo").columns[0]
+    col = connection.describe("/local/foo").columns[0]
     assert col.name == "id"
     assert col.type == ydb.PrimitiveType.Int64
 
     cur.execute("DROP TABLE foo", context={"isddl": True})
     cur.close()
-    conn.close()
 
 
-def test_cursor(endpoint, database):
-    conn = dbapi.connect(endpoint, database=database)
-
-    cur = conn.cursor()
+def test_cursor(connection):
+    cur = connection.cursor()
     assert cur
 
     cur.execute(
@@ -69,7 +63,7 @@ def test_cursor(endpoint, database):
     # cur.execute("SELECT id FROM test ORDER BY id LIMIT %(limit)s", {"limit": 2})
     # assert cur.fetchall() == [(1,), (2,)], "limit clause with params is ok"
 
-    cur2 = conn.cursor()
+    cur2 = connection.cursor()
     cur2.execute("INSERT INTO test(id) VALUES (%(id1)s), (%(id2)s)", {"id1": 5, "id2": 6})
 
     cur.execute("SELECT id FROM test ORDER BY id")
@@ -105,4 +99,3 @@ def test_cursor(endpoint, database):
 
     cur.close()
     cur2.close()
-    conn.close()
