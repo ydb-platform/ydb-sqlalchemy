@@ -3,16 +3,21 @@ import pytest
 import ydb
 import ydb_sqlalchemy.dbapi as dbapi
 
+from contextlib import suppress
+
 
 def test_connection(connection):
     connection.commit()
     connection.rollback()
 
+    cur = connection.cursor()
+    with suppress(dbapi.DatabaseError):
+        cur.execute("DROP TABLE foo", context={"isddl": True})
+
     assert not connection.check_exists("/local/foo")
     with pytest.raises(dbapi.DatabaseError):
         connection.describe("/local/foo")
 
-    cur = connection.cursor()
     cur.execute("CREATE TABLE foo(id Int64 NOT NULL, PRIMARY KEY (id))", context={"isddl": True})
 
     assert connection.check_exists("/local/foo")
@@ -28,6 +33,9 @@ def test_connection(connection):
 def test_cursor(connection):
     cur = connection.cursor()
     assert cur
+
+    with suppress(dbapi.DatabaseError):
+        cur.execute("DROP TABLE test", context={"isddl": True})
 
     cur.execute(
         "CREATE TABLE test(id Int64 NOT NULL, text Utf8, PRIMARY KEY (id))",
@@ -50,7 +58,7 @@ def test_cursor(connection):
     cur.execute("UPDATE test SET text = %(t)s WHERE id = %(id)s", {"id": 2, "t": "foo2"})
 
     cur.execute("SELECT id FROM test")
-    assert cur.fetchall() == [(1,), (2,), (3,)], "fetchall is ok"
+    assert set(cur.fetchall()) == {(1,), (2,), (3,)}, "fetchall is ok"
 
     cur.execute("SELECT id FROM test ORDER BY id DESC")
     assert cur.fetchmany(2) == [(3,), (2,)], "fetchmany is ok"
@@ -73,7 +81,7 @@ def test_cursor(connection):
     assert cur.fetchall() == [(None,), (None,)], "NULL returns as None"
 
     cur.execute("SELECT id, text FROM test WHERE text LIKE %(p)s", {"p": "foo%"})
-    assert cur.fetchall() == [(1, "foo"), (2, "foo2")], "like clause works"
+    assert set(cur.fetchall()) == {(1, "foo"), (2, "foo2")}, "like clause works"
 
     cur.execute(
         # DECLARE statement (DECLARE $data AS List<Struct<id:Int64,text:Utf8>>)

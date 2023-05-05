@@ -132,10 +132,13 @@ class ComponentReflectionTest(_ComponentReflectionTest):
     def test_get_view_names(self, connection, use_schema):
         pass
 
-    @testing.combinations(False, argnames="use_schema")  # scheme unsupported
-    @testing.combinations((True, testing.requires.views), False, argnames="views")
-    def test_metadata(self, connection, use_schema, views):
-        pass
+    def test_metadata(self, connection, **kwargs):
+        m = MetaData()
+        m.reflect(connection, resolve_fks=False)
+
+        insp = inspect(connection)
+        tables = insp.get_table_names()
+        eq_(sorted(m.tables), sorted(tables))
 
 
 class CompositeKeyReflectionTest(_CompositeKeyReflectionTest):

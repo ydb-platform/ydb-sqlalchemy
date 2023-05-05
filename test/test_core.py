@@ -20,7 +20,7 @@ class TestText(TestBase):
         rs = connection.execute(
             sa.text("SELECT x, y FROM AS_TABLE(:data)"), [{"data": [{"x": 2, "y": 1}, {"x": 3, "y": 2}]}]
         )
-        assert rs.fetchall() == [(2, 1), (3, 2)]
+        assert set(rs.fetchall()) == {(2, 1), (3, 2)}
 
 
 class TestCrud(TablesTest):
@@ -104,10 +104,10 @@ class TestSimpleSelect(TablesTest):
 
         # OR operator
         rows = connection.execute(tb.select().where((tb.c.id == 1) | (tb.c.value == "test test"))).fetchall()
-        assert rows == [
+        assert set(rows) == {
             (1, "some text", Decimal("3.141592653")),
             (3, "test test", Decimal("3.1415926")),
-        ]
+        }
 
         # AND operator, LIKE operator
         cur = connection.execute(tb.select().where(tb.c.value.like("some %") & (tb.c.num > Decimal("3.141592"))))
@@ -139,11 +139,11 @@ class TestSimpleSelect(TablesTest):
 
         # BETWEEN operator
         rows = connection.execute(sa.select(tb.c.id).filter(tb.c.id.between(3, 5))).fetchall()
-        assert rows == [(3,), (4,), (5,)]
+        assert set(rows) == {(3,), (4,), (5,)}
 
         # IN operator
         rows = connection.execute(sa.select(tb.c.id).filter(tb.c.id.in_([1, 3, 5, 7]))).fetchall()
-        assert rows == [(1,), (3,), (5,), (7,)]
+        assert set(rows) == {(1,), (3,), (5,), (7,)}
 
         # aggregates: MIN, MAX, COUNT, AVG, SUM
         assert connection.execute(sa.func.min(tb.c.id)).first() == (1,)
@@ -166,7 +166,7 @@ class TestTypes(TablesTest):
             Column("str", sa.String),
             Column("num", sa.Float),
             Column("bl", sa.Boolean),
-            Column("dt", sa.TIMESTAMP),
+            Column("ts", sa.TIMESTAMP),
             Column("date", sa.Date),
             # Column("interval", sa.Interval),
         )
@@ -182,7 +182,7 @@ class TestTypes(TablesTest):
             str="Hello World!",
             num=3.1415,
             bl=True,
-            dt=now,
+            ts=now,
             date=today,
             # interval=timedelta(minutes=45),
         )
