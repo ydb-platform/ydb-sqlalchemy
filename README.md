@@ -51,7 +51,7 @@ $ tox -e test -- test_dbapi/test_dbapi.py
 
 Check code style:
 ```bash
-$ tox -e style`
+$ tox -e style
 ```
 
 Reformat code:
