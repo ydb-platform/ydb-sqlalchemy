@@ -19,8 +19,8 @@ jobs:
       max-parallel: 4
       matrix:
         python-version: [3.8]
-        environment: [py]
-        folder: [ydb_sqlalchemy, tests]
+        environment: [test]
+        folder: [ydb_sqlalchemy, test, test_dbapi]
 
     steps:
     - uses: actions/checkout@v1

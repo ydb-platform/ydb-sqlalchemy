@@ -28,9 +28,15 @@ setuptools.setup(
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.8",
     ],
+    keywords="SQLAlchemy YDB YQL",
     install_requires=requirements,  # requirements.txt
     options={"bdist_wheel": {"universal": True}},
     extras_require={
         "yc": ["yandexcloud", ],
-    }
+    },
+    entry_points={
+        "sqlalchemy.dialects": [
+            "yql.ydb=ydb_sqlalchemy.sqlalchemy:YqlDialect",
+        ]
+    },
 )

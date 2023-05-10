@@ -7,7 +7,7 @@ import string
 from typing import Optional, Dict, Any
 
 import ydb
-from .errors import DatabaseError, ProgrammingError
+from .errors import IntegrityError, DatabaseError, ProgrammingError
 
 
 logger = logging.getLogger(__name__)
@@ -81,7 +81,7 @@ def _generate_full_stm(sql: str, params: Optional[Dict[str, Any]] = None) -> (st
         declare_stms = _generate_declare_stms(sql_params)
         sql = f"{declare_stms}{sql}"
 
-    return sql, sql_params
+    return sql.replace("%%", "%"), sql_params
 
 
 class Cursor(object):
@@ -105,8 +105,10 @@ class Cursor(object):
                 else:
                     prepared_query = cli.prepare(sql)
                     return cli.transaction().execute(prepared_query, sql_params, commit_tx=True)
+            except (ydb.issues.AlreadyExists, ydb.issues.PreconditionFailed) as e:
+                raise IntegrityError(e.message, e.issues, e.status) from e
             except ydb.Error as e:
-                raise DatabaseError(e.message, e.issues, e.status)
+                raise DatabaseError(e.message, e.issues, e.status) from e
 
         chunks = self.connection.pool.retry_operation_sync(_execute_in_pool)
         rows = self._rows_iterable(chunks)

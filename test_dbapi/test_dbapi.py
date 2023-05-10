@@ -3,37 +3,39 @@ import pytest
 import ydb
 import ydb_sqlalchemy.dbapi as dbapi
 
+from contextlib import suppress
 
-def test_connection(endpoint, database):
-    conn = dbapi.connect(endpoint, database=database)
-    assert conn
 
-    conn.commit()
-    conn.rollback()
+def test_connection(connection):
+    connection.commit()
+    connection.rollback()
 
-    assert not conn.check_exists("/local/foo")
+    cur = connection.cursor()
+    with suppress(dbapi.DatabaseError):
+        cur.execute("DROP TABLE foo", context={"isddl": True})
+
+    assert not connection.check_exists("/local/foo")
     with pytest.raises(dbapi.DatabaseError):
-        conn.describe("/local/foo")
+        connection.describe("/local/foo")
 
-    cur = conn.cursor()
     cur.execute("CREATE TABLE foo(id Int64 NOT NULL, PRIMARY KEY (id))", context={"isddl": True})
 
-    assert conn.check_exists("/local/foo")
+    assert connection.check_exists("/local/foo")
 
-    col = conn.describe("/local/foo")[0]
+    col = connection.describe("/local/foo").columns[0]
     assert col.name == "id"
     assert col.type == ydb.PrimitiveType.Int64
 
     cur.execute("DROP TABLE foo", context={"isddl": True})
     cur.close()
-    conn.close()
 
 
-def test_cursor(endpoint, database):
-    conn = dbapi.connect(endpoint, database=database)
-
-    cur = conn.cursor()
+def test_cursor(connection):
+    cur = connection.cursor()
     assert cur
+
+    with suppress(dbapi.DatabaseError):
+        cur.execute("DROP TABLE test", context={"isddl": True})
 
     cur.execute(
         "CREATE TABLE test(id Int64 NOT NULL, text Utf8, PRIMARY KEY (id))",
@@ -56,7 +58,7 @@ def test_cursor(endpoint, database):
     cur.execute("UPDATE test SET text = %(t)s WHERE id = %(id)s", {"id": 2, "t": "foo2"})
 
     cur.execute("SELECT id FROM test")
-    assert cur.fetchall() == [(1,), (2,), (3,)], "fetchall is ok"
+    assert set(cur.fetchall()) == {(1,), (2,), (3,)}, "fetchall is ok"
 
     cur.execute("SELECT id FROM test ORDER BY id DESC")
     assert cur.fetchmany(2) == [(3,), (2,)], "fetchmany is ok"
@@ -69,7 +71,7 @@ def test_cursor(endpoint, database):
     # cur.execute("SELECT id FROM test ORDER BY id LIMIT %(limit)s", {"limit": 2})
     # assert cur.fetchall() == [(1,), (2,)], "limit clause with params is ok"
 
-    cur2 = conn.cursor()
+    cur2 = connection.cursor()
     cur2.execute("INSERT INTO test(id) VALUES (%(id1)s), (%(id2)s)", {"id1": 5, "id2": 6})
 
     cur.execute("SELECT id FROM test ORDER BY id")
@@ -79,7 +81,7 @@ def test_cursor(endpoint, database):
     assert cur.fetchall() == [(None,), (None,)], "NULL returns as None"
 
     cur.execute("SELECT id, text FROM test WHERE text LIKE %(p)s", {"p": "foo%"})
-    assert cur.fetchall() == [(1, "foo"), (2, "foo2")], "like clause works"
+    assert set(cur.fetchall()) == {(1, "foo"), (2, "foo2")}, "like clause works"
 
     cur.execute(
         # DECLARE statement (DECLARE $data AS List<Struct<id:Int64,text:Utf8>>)
@@ -105,4 +107,3 @@ def test_cursor(endpoint, database):
 
     cur.close()
     cur2.close()
-    conn.close()

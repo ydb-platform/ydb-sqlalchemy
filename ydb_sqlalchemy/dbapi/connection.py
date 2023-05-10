@@ -6,8 +6,8 @@ from .errors import DatabaseError
 
 
 class Connection:
-    def __init__(self, endpoint, database=None, **conn_kwargs):
-        self.endpoint = endpoint
+    def __init__(self, endpoint=None, host=None, port=None, database=None, **conn_kwargs):
+        self.endpoint = endpoint or f"grpc://{host}:{port}"
         self.database = database
         self.driver = self._create_driver(self.endpoint, self.database, **conn_kwargs)
         self.pool = ydb.SessionPool(self.driver)
@@ -18,8 +18,7 @@ class Connection:
     def describe(self, table_path):
         full_path = posixpath.join(self.database, table_path)
         try:
-            res = self.pool.retry_operation_sync(lambda cli: cli.describe_table(full_path))
-            return res.columns
+            return self.pool.retry_operation_sync(lambda cli: cli.describe_table(full_path))
         except ydb.Error as e:
             raise DatabaseError(e.message, e.issues, e.status)
         except Exception:
