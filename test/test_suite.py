@@ -10,6 +10,7 @@ from sqlalchemy.testing.suite import MetaData, Column, Table, Integer, String
 
 from sqlalchemy.testing.suite.test_select import (
     ExistsTest as _ExistsTest,
+    LikeFunctionsTest as _LikeFunctionsTest,
     CompoundSelectTest as _CompoundSelectTest,
 )
 from sqlalchemy.testing.suite.test_reflection import (
@@ -269,6 +270,14 @@ class ExistsTest(_ExistsTest):
     def test_select_exists_false(self, connection):
         stuff = self.tables.stuff
         eq_(connection.execute(select(exists().where(stuff.c.data == "no data"))).fetchall(), [(False,)])
+
+
+class LikeFunctionsTest(_LikeFunctionsTest):
+    @testing.requires.regexp_match
+    def test_not_regexp_match(self):
+        col = self.tables.some_table.c.data
+        # YDB fetch NULL columns too
+        self._test(~col.regexp_match("a.cde"), {2, 3, 4, 7, 8, 10, 11})
 
 
 class CompoundSelectTest(_CompoundSelectTest):

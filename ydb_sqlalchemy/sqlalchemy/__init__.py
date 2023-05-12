@@ -203,6 +203,12 @@ class YqlCompiler(StrSQLCompiler):
             + [name]
         ) % {"expr": self.function_argspec(func, **kwargs)}
 
+    def visit_regexp_match_op_binary(self, binary, operator, **kw):
+        return self._generate_generic_binary(binary, " REGEXP ", **kw)
+
+    def visit_not_regexp_match_op_binary(self, binary, operator, **kw):
+        return self._generate_generic_binary(binary, " NOT REGEXP ", **kw)
+
 
 class YqlDDLCompiler(DDLCompiler):
     pass
