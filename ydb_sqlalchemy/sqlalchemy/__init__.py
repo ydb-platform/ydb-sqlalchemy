@@ -17,6 +17,7 @@ from sqlalchemy.sql.compiler import (
     DDLCompiler,
 )
 from sqlalchemy.sql.elements import ClauseList
+from sqlalchemy.engine import reflection
 from sqlalchemy.engine.default import StrCompileDialect
 from sqlalchemy.util.compat import inspect_getfullargspec
 
@@ -308,6 +309,7 @@ class YqlDialect(StrCompileDialect):
         except dbapi.DatabaseError as e:
             raise NoSuchTableError(qt) from e
 
+    @reflection.cache
     def get_columns(self, connection, table_name, schema=None, **kw):
         table = self._describe_table(connection, table_name, schema)
         as_compatible = []
@@ -324,6 +326,7 @@ class YqlDialect(StrCompileDialect):
 
         return as_compatible
 
+    @reflection.cache
     def get_table_names(self, connection, schema=None, **kw):
         if schema:
             raise dbapi.NotSupportedError("unsupported on non empty schema")
@@ -334,6 +337,7 @@ class YqlDialect(StrCompileDialect):
 
         return [child.name for child in children if child.is_table()]
 
+    @reflection.cache
     def has_table(self, connection, table_name, schema=None, **kwargs):
         try:
             self._describe_table(connection, table_name, schema)
@@ -341,14 +345,17 @@ class YqlDialect(StrCompileDialect):
         except NoSuchTableError:
             return False
 
+    @reflection.cache
     def get_pk_constraint(self, connection, table_name, schema=None, **kwargs):
         table = self._describe_table(connection, table_name, schema)
         return {"constrained_columns": table.primary_key, "name": None}
 
+    @reflection.cache
     def get_foreign_keys(self, connection, table_name, schema=None, **kwargs):
         # foreign keys unsupported
         return []
 
+    @reflection.cache
     def get_indexes(self, connection, table_name, schema=None, **kwargs):
         # TODO: implement me
         return []

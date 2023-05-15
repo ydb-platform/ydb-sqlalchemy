@@ -4,6 +4,7 @@ import sqlalchemy.testing.suite.test_types
 
 from sqlalchemy.testing.suite import *  # noqa: F401, F403
 
+from sqlalchemy.testing import is_true, is_false
 from sqlalchemy.testing.suite import eq_, testing, inspect, provide_metadata, config, requirements
 from sqlalchemy.testing.suite import func, column, literal_column, select, exists
 from sqlalchemy.testing.suite import MetaData, Column, Table, Integer, String
@@ -62,11 +63,6 @@ test_types_suite.Column = column_getter
 
 
 class ComponentReflectionTest(_ComponentReflectionTest):
-    @property
-    def _required_column_keys(self):
-        # nullable had changed so don't check it.
-        return {"name", "type", "default"}
-
     def _check_list(self, result, exp, req_keys=None, msg=None):
         try:
             return super()._check_list(result, exp, req_keys, msg)
@@ -157,10 +153,6 @@ class CompositeKeyReflectionTest(_CompositeKeyReflectionTest):
             test_needs_fk=True,
         )
 
-    @pytest.mark.skip("TODO: pk key reflection unsupported")
-    def test_pk_column_order(self, connection):
-        pass
-
 
 class ComponentReflectionTestExtra(_ComponentReflectionTestExtra):
     def _type_round_trip(self, connection, metadata, *types):
@@ -207,9 +199,19 @@ class HasTableTest(_HasTableTest):
             Column("data", String(50)),
         )
 
-    @pytest.mark.skip("TODO: reflection cache unsupported")
     def test_has_table_cache(self, metadata):
-        pass
+        insp = inspect(config.db)
+        is_true(insp.has_table("test_table"))
+        # table without pk unsupported
+        nt = Table("new_table", metadata, Column("col", Integer, primary_key=True))
+        is_false(insp.has_table("new_table"))
+        nt.create(config.db)
+        try:
+            is_false(insp.has_table("new_table"))
+            insp.clear_cache()
+            is_true(insp.has_table("new_table"))
+        finally:
+            nt.drop(config.db)
 
 
 @pytest.mark.skip("CREATE INDEX syntax unsupported")
@@ -291,14 +293,6 @@ class CompoundSelectTest(_CompoundSelectTest):
 
     @pytest.mark.skip("limit don't work")
     def test_limit_offset_aliased_selectable_in_unions(self):
-        pass
-
-    @pytest.mark.skip("union with brackets don't work")
-    def test_order_by_selectable_in_unions(self):
-        pass
-
-    @pytest.mark.skip("union with brackets don't work")
-    def test_limit_offset_selectable_in_unions(self):
         pass
 
 

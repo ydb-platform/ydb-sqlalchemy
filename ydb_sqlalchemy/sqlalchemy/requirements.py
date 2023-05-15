@@ -12,10 +12,6 @@ class Requirements(SuiteRequirements):
         return exclusions.open()
 
     @property
-    def nullable_booleans(self):
-        return exclusions.closed()
-
-    @property
     def foreign_keys(self):
         # foreign keys unsupported
         return exclusions.closed()
@@ -77,3 +73,29 @@ class Requirements(SuiteRequirements):
     @property
     def regexp_match(self):
         return exclusions.open()
+
+    @property
+    def table_value_constructor(self):
+        return exclusions.open()
+
+    @property
+    def named_constraints(self):
+        return exclusions.closed()
+
+    @property
+    def timestamp_microseconds(self):
+        return exclusions.open()
+
+    @property
+    def mod_operator_as_percent_sign(self):
+        return exclusions.open()
+
+    @property
+    def parens_in_union_contained_select_w_limit_offset(self):
+        """union with brackets don't work"""
+        return exclusions.closed()
+
+    @property
+    def parens_in_union_contained_select_wo_limit_offset(self):
+        """union with brackets don't work"""
+        return exclusions.closed()
