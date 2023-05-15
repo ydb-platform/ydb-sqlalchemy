@@ -73,3 +73,7 @@ class Requirements(SuiteRequirements):
     @property
     def duplicate_names_in_cursor_description(self):
         return exclusions.closed()
+
+    @property
+    def regexp_match(self):
+        return exclusions.open()

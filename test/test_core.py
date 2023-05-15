@@ -118,9 +118,13 @@ class TestSimpleSelect(TablesTest):
         assert rows == [(7, "text text", Decimal("3.141"))]
 
         # REGEXP matching
-        # stm = tb.select().where(tb.c.value.regexp_match(r"s\w{3}\ss\w{3}"))
-        # rows = connection.execute(stm).fetchall()
-        # assert rows == [(5, "some some", Decimal("3.14159"))]
+        stm = tb.select().where(tb.c.value.regexp_match(r"s\w{3}\ss\w{3}"))
+        rows = connection.execute(stm).fetchall()
+        assert rows == [(5, "some some", Decimal("3.14159"))]
+
+        stm = sa.select(tb.c.id).where(~tb.c.value.regexp_match(r"s\w{3}\ss\w{3}"))
+        rows = connection.execute(stm).fetchall()
+        assert set(rows) == {(1,), (2,), (3,), (4,), (6,), (7,)}
 
         # LIMIT/OFFSET
         # rows = connection.execute(tb.select().order_by(tb.c.id).limit(2)).fetchall()
