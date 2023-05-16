@@ -15,7 +15,7 @@ def test_connection(connection):
         cur.execute("DROP TABLE foo", context={"isddl": True})
 
     assert not connection.check_exists("/local/foo")
-    with pytest.raises(dbapi.DatabaseError):
+    with pytest.raises(dbapi.ProgrammingError):
         connection.describe("/local/foo")
 
     cur.execute("CREATE TABLE foo(id Int64 NOT NULL, PRIMARY KEY (id))", context={"isddl": True})
@@ -107,3 +107,34 @@ def test_cursor(connection):
 
     cur.close()
     cur2.close()
+
+
+def test_errors(connection):
+    with pytest.raises(dbapi.InterfaceError):
+        dbapi.connect("localhost:2136", database="/local666")
+
+    cur = connection.cursor()
+
+    with suppress(dbapi.DatabaseError):
+        cur.execute("DROP TABLE test", context={"isddl": True})
+
+    with pytest.raises(dbapi.DataError):
+        cur.execute("SELECT 18446744073709551616")
+
+    with pytest.raises(dbapi.DataError):
+        cur.execute("SELECT * FROM 拉屎")
+
+    with pytest.raises(dbapi.DataError):
+        cur.execute("SELECT floor(5 / 2)")
+
+    with pytest.raises(dbapi.ProgrammingError):
+        cur.execute("SELECT * FROM test")
+
+    cur.execute("CREATE TABLE test(id Int64, PRIMARY KEY (id))", context={"isddl": True})
+
+    cur.execute("INSERT INTO test(id) VALUES(1)")
+    with pytest.raises(dbapi.IntegrityError):
+        cur.execute("INSERT INTO test(id) VALUES(1)")
+
+    cur.execute("DROP TABLE test", context={"isddl": True})
+    cur.close()

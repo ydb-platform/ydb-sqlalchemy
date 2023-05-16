@@ -2,7 +2,7 @@ import posixpath
 
 import ydb
 from .cursor import Cursor
-from .errors import DatabaseError
+from .errors import InterfaceError, ProgrammingError, DatabaseError
 
 
 class Connection:
@@ -19,10 +19,12 @@ class Connection:
         full_path = posixpath.join(self.database, table_path)
         try:
             return self.pool.retry_operation_sync(lambda cli: cli.describe_table(full_path))
+        except ydb.issues.SchemeError as e:
+            raise ProgrammingError(e.message, e.issues, e.status) from e
         except ydb.Error as e:
-            raise DatabaseError(e.message, e.issues, e.status)
-        except Exception:
-            raise DatabaseError(f"Failed to describe table {table_path}")
+            raise DatabaseError(e.message, e.issues, e.status) from e
+        except Exception as e:
+            raise DatabaseError(f"Failed to describe table {table_path}") from e
 
     def check_exists(self, table_path):
         try:
@@ -61,8 +63,8 @@ class Connection:
         try:
             driver.wait(timeout=5, fail_fast=True)
         except ydb.Error as e:
-            raise DatabaseError(e.message, e.issues, e.status)
-        except Exception:
+            raise InterfaceError(e.message, e.issues, e.status) from e
+        except Exception as e:
             driver.stop()
-            raise DatabaseError(f"Failed to connect to YDB, details {driver.discovery_debug_details()}")
+            raise InterfaceError(f"Failed to connect to YDB, details {driver.discovery_debug_details()}") from e
         return driver
