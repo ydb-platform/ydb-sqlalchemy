@@ -7,7 +7,15 @@ import string
 from typing import Optional, Dict, Any
 
 import ydb
-from .errors import IntegrityError, DatabaseError, ProgrammingError
+from .errors import (
+    InternalError,
+    IntegrityError,
+    DataError,
+    DatabaseError,
+    ProgrammingError,
+    OperationalError,
+    NotSupportedError,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -107,6 +115,28 @@ class Cursor(object):
                     return cli.transaction().execute(prepared_query, sql_params, commit_tx=True)
             except (ydb.issues.AlreadyExists, ydb.issues.PreconditionFailed) as e:
                 raise IntegrityError(e.message, e.issues, e.status) from e
+            except (ydb.issues.Unsupported, ydb.issues.Unimplemented) as e:
+                raise NotSupportedError(e.message, e.issues, e.status) from e
+            except (ydb.issues.BadRequest, ydb.issues.SchemeError) as e:
+                raise ProgrammingError(e.message, e.issues, e.status) from e
+            except (
+                ydb.issues.TruncatedResponseError,
+                ydb.issues.ConnectionError,
+                ydb.issues.Aborted,
+                ydb.issues.Unavailable,
+                ydb.issues.Overloaded,
+                ydb.issues.Undetermined,
+                ydb.issues.Timeout,
+                ydb.issues.Cancelled,
+                ydb.issues.SessionBusy,
+                ydb.issues.SessionExpired,
+                ydb.issues.SessionPoolEmpty,
+            ) as e:
+                raise OperationalError(e.message, e.issues, e.status) from e
+            except ydb.issues.GenericError as e:
+                raise DataError(e.message, e.issues, e.status) from e
+            except ydb.issues.InternalError as e:
+                raise InternalError(e.message, e.issues, e.status) from e
             except ydb.Error as e:
                 raise DatabaseError(e.message, e.issues, e.status) from e
 
@@ -144,7 +174,7 @@ class Cursor(object):
                     #  of this PEP to return a sequence: https://www.python.org/dev/peps/pep-0249/#fetchmany
                     yield row[::]
         except ydb.Error as e:
-            raise DatabaseError(e.message, e.issues, e.status)
+            raise DatabaseError(e.message, e.issues, e.status) from e
 
     def _ensure_prefetched(self):
         if self.rows is not None and self._rows_prefetched is None:
