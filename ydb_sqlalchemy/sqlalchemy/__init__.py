@@ -222,7 +222,9 @@ class YqlCompiler(StrSQLCompiler):
 
     def _get_bind_type(self, bind_name: str, bind: sa.BindParameter, post_compile_bind_values: list) -> Optional[str]:
         is_optional = self._is_optional(bind_name) or None in post_compile_bind_values
-        if not bind.expanding or not isinstance(bind.type, sa.types.NullType):
+        if not bind.expanding:
+            if isinstance(bind.type, sa.types.NullType):
+                return None
             bind_type = bind.type.compile(self.dialect)
         else:
             not_null_values = [v for v in post_compile_bind_values if v is not None]
