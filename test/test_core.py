@@ -18,7 +18,12 @@ class TestText(TestBase):
         assert rs.fetchone() == (1,)
 
         rs = connection.execute(
-            sa.text("SELECT x, y FROM AS_TABLE(:data)"), [{"data": [{"x": 2, "y": 1}, {"x": 3, "y": 2}]}]
+            sa.text(
+                """
+                DECLARE :data AS List<Struct<x:Int64, y:Int64>>;
+                SELECT x, y FROM AS_TABLE(:data)
+                """
+            ), [{"data": [{"x": 2, "y": 1}, {"x": 3, "y": 2}]}]
         )
         assert set(rs.fetchall()) == {(2, 1), (3, 2)}
 

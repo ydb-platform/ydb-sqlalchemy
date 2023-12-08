@@ -210,6 +210,36 @@ class YqlCompiler(StrSQLCompiler):
     def visit_not_regexp_match_op_binary(self, binary, operator, **kw):
         return self._generate_generic_binary(binary, " NOT REGEXP ", **kw)
 
+    def _is_optional(self, bind_name: str) -> bool:
+        bind = self.binds[bind_name]
+        if isinstance(bind.type, sa.Boolean):
+            return True
+        if bind_name in self.column_keys and hasattr(self.compile_state, "dml_table"):
+            column = self.compile_state.dml_table.c[bind_name]
+            return not column.primary_key
+        return False
+
+    def render_declare(self):
+        declare_clauses = []
+        for bind_name in self.bind_names.values():
+            bind = self.binds[bind_name]
+            if not bind.literal_execute:
+                bind_type = bind.type.compile(self.dialect)
+                if self._is_optional(bind_name):
+                    bind_type = f"Optional<{bind_type}>"
+                if not bind.expanding:
+                    declare_clauses.append(f"DECLARE %({bind_name})s AS {bind_type};")
+                else:
+                    # to render DECLARE for each variable at the IN statement
+                    # number of them are not available during compilation
+                    declare_clauses.append(f"__[POSTCOMPILE_{bind_name}~~DECLARE ~~~~ AS {bind_type};~~]")
+
+        self.string = "\n" + "\n".join(declare_clauses) + "\n" + self.string
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.render_declare()
+
 
 class YqlDDLCompiler(DDLCompiler):
     pass

@@ -1,10 +1,7 @@
-import datetime
 import itertools
 import logging
-import uuid
-import decimal
-import string
-from typing import Optional, Dict, Any
+
+from typing import Any
 
 import ydb
 from .errors import (
@@ -21,75 +18,8 @@ from .errors import (
 logger = logging.getLogger(__name__)
 
 
-identifier_starts = {x for x in itertools.chain(string.ascii_letters, "_")}
-valid_identifier_chars = {x for x in itertools.chain(identifier_starts, string.digits)}
-
-
-def check_identifier_valid(idt: str) -> bool:
-    valid = idt and idt[0] in identifier_starts and all(c in valid_identifier_chars for c in idt)
-    if not valid:
-        raise ProgrammingError(f"Invalid identifier {idt}")
-    return valid
-
-
 def get_column_type(type_obj: Any) -> str:
     return str(ydb.convert.type_to_native(type_obj))
-
-
-def _generate_type_str(value: Any) -> str:
-    tvalue = type(value)
-
-    stype = {
-        bool: "Bool",
-        bytes: "String",
-        str: "Utf8",
-        int: "Int64",
-        float: "Double",
-        decimal.Decimal: "Decimal(22, 9)",
-        datetime.date: "Date",
-        datetime.datetime: "Timestamp",
-        datetime.timedelta: "Interval",
-        uuid.UUID: "Uuid",
-    }.get(tvalue)
-
-    if tvalue == dict:
-        types_lst = ", ".join(f"{k}: {_generate_type_str(v)}" for k, v in value.items())
-        stype = f"Struct<{types_lst}>"
-
-    elif tvalue == tuple:
-        types_lst = ", ".join(_generate_type_str(x) for x in value)
-        stype = f"Tuple<{types_lst}>"
-
-    elif tvalue == list:
-        nested_type = _generate_type_str(value[0])
-        stype = f"List<{nested_type}>"
-
-    elif tvalue == set:
-        nested_type = _generate_type_str(next(iter(value)))
-        stype = f"Set<{nested_type}>"
-
-    if stype is None:
-        raise ProgrammingError(f"Cannot translate value {value} (type {tvalue}) to ydb type.")
-
-    return stype
-
-
-def _generate_declare_stms(params: Dict[str, Any]) -> str:
-    return "".join(f"DECLARE {k} AS {_generate_type_str(t)}; " for k, t in params.items())
-
-
-def _generate_full_stm(sql: str, params: Optional[Dict[str, Any]] = None) -> (str, Optional[Dict[str, Any]]):
-    sql_params = None
-
-    if params:
-        for name in params.keys():
-            check_identifier_valid(name)
-        sql = sql % {k: f"${k}" if v is not None else "NULL" for k, v in params.items()}
-        sql_params = {f"${k}": v for k, v in params.items() if v is not None}
-        declare_stms = _generate_declare_stms(sql_params)
-        sql = f"{declare_stms}{sql}"
-
-    return sql.replace("%%", "%"), sql_params
 
 
 class Cursor(object):
@@ -103,7 +33,14 @@ class Cursor(object):
     def execute(self, sql, parameters=None, context=None):
         self.description = None
 
-        sql, sql_params = _generate_full_stm(sql, parameters)
+        if parameters:
+            sql = sql % {k: f"${k}" for k, v in parameters.items()}
+            sql_params = {f"${k}": v for k, v in parameters.items()}
+        else:
+            sql_params = parameters
+        sql = sql.replace("%%", "%")
+        sql = sql.replace(";,", ";\n")
+
         logger.info("execute sql: %s, params: %s", sql, sql_params)
 
         def _execute_in_pool(cli):

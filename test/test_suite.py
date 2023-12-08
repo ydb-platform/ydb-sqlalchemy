@@ -402,6 +402,10 @@ class InsertBehaviorTest(_InsertBehaviorTest):
     def test_insert_from_select_autoinc_no_rows(self, connection):
         pass
 
+    @pytest.mark.skip("implicit PK values unsupported")
+    def test_no_results_for_non_returning_insert(self, connection):
+        pass
+
 
 @pytest.mark.skip("unsupported Time data type")
 class TimeTest(_TimeTest):
