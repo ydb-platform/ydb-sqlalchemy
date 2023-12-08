@@ -21,7 +21,7 @@ from sqlalchemy.engine import reflection
 from sqlalchemy.engine.default import StrCompileDialect
 from sqlalchemy.util.compat import inspect_getfullargspec
 
-from typing import Any
+from typing import Any, Optional, Union
 
 from .types import UInt32, UInt64
 
@@ -215,30 +215,46 @@ class YqlCompiler(StrSQLCompiler):
         if isinstance(bind.type, sa.Boolean):
             return True
         if bind_name in self.column_keys and hasattr(self.compile_state, "dml_table"):
-            column = self.compile_state.dml_table.c[bind_name]
-            return not column.primary_key
+            if bind_name in self.compile_state.dml_table.c:
+                column = self.compile_state.dml_table.c[bind_name]
+                return not column.primary_key
         return False
 
-    def render_declare(self):
+    def _get_bind_type(self, bind_name: str, bind: sa.BindParameter, post_compile_bind_values: list) -> Optional[str]:
+        is_optional = self._is_optional(bind_name) or None in post_compile_bind_values
+        if not bind.expanding or not isinstance(bind.type, sa.types.NullType):
+            bind_type = bind.type.compile(self.dialect)
+        else:
+            not_null_values = [v for v in post_compile_bind_values if v is not None]
+            if not_null_values:
+                bind_type = sa.BindParameter("", not_null_values[0]).type.compile(self.dialect)
+            else:
+                return None
+        if is_optional:
+            bind_type = f"Optional<{bind_type}>"
+        return bind_type
+
+    def render_declare(self, post_compile_parameters: Union[list[dict], dict]) -> str:
+        if isinstance(post_compile_parameters, list):
+            common_keys = set.intersection(*map(set, post_compile_parameters))
+            post_compile_parameters = {k: [dic[k] for dic in post_compile_parameters] for k in common_keys}
         declare_clauses = []
         for bind_name in self.bind_names.values():
             bind = self.binds[bind_name]
             if not bind.literal_execute:
-                bind_type = bind.type.compile(self.dialect)
-                if self._is_optional(bind_name):
-                    bind_type = f"Optional<{bind_type}>"
                 if not bind.expanding:
-                    declare_clauses.append(f"DECLARE %({bind_name})s AS {bind_type};")
+                    post_compile_bind_value = post_compile_parameters[bind_name]
+                    bind_type = self._get_bind_type(bind_name, bind, [post_compile_bind_value])
+                    if bind_type:
+                        declare_clauses.append(f"DECLARE %({bind_name})s AS {bind_type};")
                 else:
-                    # to render DECLARE for each variable at the IN statement
-                    # number of them are not available during compilation
-                    declare_clauses.append(f"__[POSTCOMPILE_{bind_name}~~DECLARE ~~~~ AS {bind_type};~~]")
+                    post_compile_binds = {k: v for k, v in post_compile_parameters.items() if k.startswith(bind_name)}
+                    bind_type = self._get_bind_type(bind_name, bind, list(post_compile_binds.values()))
+                    if bind_type:
+                        for post_compile_bind_name in post_compile_binds:
+                            declare_clauses.append(f"DECLARE %({post_compile_bind_name})s AS {bind_type};")
 
-        self.string = "\n" + "\n".join(declare_clauses) + "\n" + self.string
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.render_declare()
+        return "\n".join(declare_clauses)
 
 
 class YqlDDLCompiler(DDLCompiler):
@@ -394,8 +410,18 @@ class YqlDialect(StrCompileDialect):
         # TODO: needs to implement?
         pass
 
+    def do_executemany(self, cursor, statement, parameters, context=None):
+        if context is not None and not context.isddl and context.compiled:
+            statement = context.compiled.render_declare(parameters) + "\n" + statement
+
+        cursor.executemany(statement, parameters)
+
     def do_execute(self, cursor, statement, parameters, context=None) -> None:
         c = None
-        if context is not None and context.isddl:
-            c = {"isddl": True}
+        if context is not None:
+            if context.isddl:
+                c = {"isddl": True}
+            elif context.compiled:
+                statement = context.compiled.render_declare(parameters) + "\n" + statement
+
         cursor.execute(statement, parameters, c)

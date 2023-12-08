@@ -39,7 +39,6 @@ class Cursor(object):
         else:
             sql_params = parameters
         sql = sql.replace("%%", "%")
-        sql = sql.replace(";,", ";\n")
 
         logger.info("execute sql: %s, params: %s", sql, sql_params)
 
