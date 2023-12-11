@@ -265,17 +265,16 @@ class YqlCompiler(StrSQLCompiler):
     def visit_not_regexp_match_op_binary(self, binary, operator, **kw):
         return self._generate_generic_binary(binary, " NOT REGEXP ", **kw)
 
-    def _is_optional(self, bind_name: str) -> bool:
-        bind = self.binds[bind_name]
-        if isinstance(bind.type, sa.Boolean):
-            return True
+    def _is_bound_to_nullable_column(self, bind_name: str) -> bool:
         if bind_name in self.column_keys and hasattr(self.compile_state, "dml_table"):
             if bind_name in self.compile_state.dml_table.c:
                 column = self.compile_state.dml_table.c[bind_name]
                 return not column.primary_key
         return False
 
-    def _get_bind_type(self, bind: sa.BindParameter, post_compile_bind_values: list) -> Optional[sa.types.TypeEngine]:
+    def _guess_bound_variable_type_by_parameters(
+        self, bind: sa.BindParameter, post_compile_bind_values: list
+    ) -> Optional[sa.types.TypeEngine]:
         if not bind.expanding:
             if isinstance(bind.type, sa.types.NullType):
                 return None
@@ -289,31 +288,57 @@ class YqlCompiler(StrSQLCompiler):
 
         return bind_type
 
+    def _get_expanding_bind_names(self, bind_name: str, parameters_values: Mapping[str, list[Any]]) -> list[Any]:
+        expanding_bind_names = []
+        for parameter_name in parameters_values:
+            parameter_bind_name = "_".join(parameter_name.split("_")[:-1])
+            if parameter_bind_name == bind_name:
+                expanding_bind_names.append(parameter_name)
+        return expanding_bind_names
+
     def get_bind_types(
         self, post_compile_parameters: Optional[Union[Sequence[Mapping[str, Any]], Mapping[str, Any]]]
     ) -> Mapping[str, Union[ydb.PrimitiveType, ydb.AbstractTypeBuilder]]:
-        if not isinstance(post_compile_parameters, collections.Mapping):
-            common_keys = set.intersection(*map(set, post_compile_parameters))
-            post_compile_parameters = {k: [dic[k] for dic in post_compile_parameters] for k in common_keys}
+        """
+        This method extracts information about bound variables from the table definition and parameters.
+        """
+        if isinstance(post_compile_parameters, collections.Mapping):
+            post_compile_parameters = [post_compile_parameters]
+
+        parameters_values = collections.defaultdict(list)
+        for parameters_entry in post_compile_parameters:
+            for parameter_name, parameter_value in parameters_entry.items():
+                parameters_values[parameter_name].append(parameter_value)
+
         parameter_types = {}
         for bind_name in self.bind_names.values():
             bind = self.binds[bind_name]
-            if not bind.literal_execute:
-                if not bind.expanding:
-                    post_compile_bind_value = post_compile_parameters[bind_name]
-                    is_optional = self._is_optional(bind_name) or post_compile_bind_value is None
-                    bind_type = self._get_bind_type(bind, [post_compile_bind_value])
-                    if bind_type:
-                        parameter_types[bind_name] = YqlTypeCompiler(self.dialect).get_ydb_type(bind_type, is_optional)
-                else:
-                    post_compile_binds = {k: v for k, v in post_compile_parameters.items() if k.startswith(bind_name)}
-                    is_optional = self._is_optional(bind_name) or None in post_compile_binds.values()
-                    bind_type = self._get_bind_type(bind, list(post_compile_binds.values()))
-                    if bind_type:
-                        for post_compile_bind_name in post_compile_binds:
-                            parameter_types[post_compile_bind_name] = YqlTypeCompiler(self.dialect).get_ydb_type(
-                                bind_type, is_optional
-                            )
+
+            if bind.literal_execute:
+                continue
+
+            if not bind.expanding:
+                post_compile_bind_names = [bind_name]
+                post_compile_bind_values = parameters_values[bind_name]
+            else:
+                post_compile_bind_names = self._get_expanding_bind_names(bind_name, parameters_values)
+                post_compile_bind_values = []
+                for parameter_name, parameter_values in parameters_values.items():
+                    if parameter_name in post_compile_bind_names:
+                        post_compile_bind_values.extend(parameter_values)
+
+            is_optional = self._is_bound_to_nullable_column(bind_name)
+            if not post_compile_bind_values or None in post_compile_bind_values:
+                is_optional = True
+
+            bind_type = self._guess_bound_variable_type_by_parameters(bind, post_compile_bind_values)
+
+            if bind_type:
+                for post_compile_bind_name in post_compile_bind_names:
+                    parameter_types[post_compile_bind_name] = YqlTypeCompiler(self.dialect).get_ydb_type(
+                        bind_type, is_optional
+                    )
+
         return parameter_types
 
 
