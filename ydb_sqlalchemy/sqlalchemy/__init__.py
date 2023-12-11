@@ -3,28 +3,34 @@ Experimental
 Work in progress, breaking changes are possible.
 """
 import collections
-import ydb
-import ydb_sqlalchemy.dbapi as dbapi
-from ydb_sqlalchemy.dbapi.constants import YDB_KEYWORDS
+from typing import Any
+from typing import Mapping
+from typing import Optional
+from typing import Sequence
+from typing import Tuple
+from typing import Union
 
 import sqlalchemy as sa
-from sqlalchemy.exc import CompileError, NoSuchTableError
-from sqlalchemy.sql import functions, literal_column
-from sqlalchemy.sql.compiler import (
-    selectable,
-    IdentifierPreparer,
-    StrSQLTypeCompiler,
-    StrSQLCompiler,
-    DDLCompiler,
-)
-from sqlalchemy.sql.elements import ClauseList
 from sqlalchemy.engine import reflection
-from sqlalchemy.engine.default import StrCompileDialect, DefaultExecutionContext
+from sqlalchemy.engine.default import DefaultExecutionContext
+from sqlalchemy.engine.default import StrCompileDialect
+from sqlalchemy.exc import CompileError
+from sqlalchemy.exc import NoSuchTableError
+from sqlalchemy.sql import functions
+from sqlalchemy.sql import literal_column
+from sqlalchemy.sql.compiler import DDLCompiler
+from sqlalchemy.sql.compiler import IdentifierPreparer
+from sqlalchemy.sql.compiler import StrSQLCompiler
+from sqlalchemy.sql.compiler import StrSQLTypeCompiler
+from sqlalchemy.sql.compiler import selectable
+from sqlalchemy.sql.elements import ClauseList
 from sqlalchemy.util.compat import inspect_getfullargspec
+import ydb
 
-from typing import Any, Optional, Union, Sequence, Mapping, Tuple
-
-from .types import UInt32, UInt64
+import ydb_sqlalchemy.dbapi as dbapi
+from ydb_sqlalchemy.dbapi.constants import YDB_KEYWORDS
+from .types import UInt32
+from .types import UInt64
 
 STR_QUOTE_MAP = {
     "'": "\\'",
@@ -61,56 +67,72 @@ class YqlIdentifierPreparer(IdentifierPreparer):
 
 
 class YqlTypeCompiler(StrSQLTypeCompiler):
-    def visit_CHAR(self, type_, **kw):
+    def visit_CHAR(self, type_: sa.CHAR, **kw):
         return "UTF8"
 
-    def visit_VARCHAR(self, type_, **kw):
+    def visit_VARCHAR(self, type_: sa.VARCHAR, **kw):
         return "UTF8"
 
-    def visit_unicode(self, type_, **kw):
+    def visit_unicode(self, type_: sa.Unicode, **kw):
         return "UTF8"
 
-    def visit_uuid(self, type_, **kw):
+    def visit_uuid(self, type_: sa.Uuid, **kw):
         return "UTF8"
 
-    def visit_NVARCHAR(self, type_, **kw):
+    def visit_NVARCHAR(self, type_: sa.NVARCHAR, **kw):
         return "UTF8"
 
-    def visit_TEXT(self, type_, **kw):
+    def visit_TEXT(self, type_: sa.TEXT, **kw):
         return "UTF8"
 
-    def visit_FLOAT(self, type_, **kw):
+    def visit_FLOAT(self, type_: sa.FLOAT, **kw):
         return "FLOAT"
 
-    def visit_BOOLEAN(self, type_, **kw):
+    def visit_BOOLEAN(self, type_: sa.BOOLEAN, **kw):
         return "BOOL"
 
-    def visit_uint32(self, type_, **kw):
+    def visit_uint32(self, type_: types.UInt32, **kw):
         return "UInt32"
 
-    def visit_uint64(self, type_, **kw):
+    def visit_uint64(self, type_: types.UInt64, **kw):
         return "UInt64"
 
-    def visit_uint8(self, type_, **kw):
+    def visit_uint8(self, type_: types.UInt8, **kw):
         return "UInt8"
 
-    def visit_INTEGER(self, type_, **kw):
+    def visit_INTEGER(self, type_: sa.INTEGER, **kw):
         return "Int64"
 
-    def visit_NUMERIC(self, type_, **kw):
+    def visit_NUMERIC(self, type_: sa.Numeric, **kw):
         """Only Decimal(22,9) is supported for table columns"""
         return f"Decimal({type_.precision}, {type_.scale})"
 
-    def visit_BINARY(self, type_, **kw):
+    def visit_BINARY(self, type_: sa.BINARY, **kw):
         return "String"
 
-    def visit_BLOB(self, type_, **kw):
+    def visit_BLOB(self, type_: sa.BLOB, **kw):
         return "String"
 
-    def visit_DATETIME(self, type_, **kw):
+    def visit_DATETIME(self, type_: sa.TIMESTAMP, **kw):
         return "Timestamp"
 
-    def get_ydb_type(self, type_: sa.types.TypeEngine, is_optional: bool) -> Union[ydb.PrimitiveType, ydb.AbstractTypeBuilder]:
+    def visit_list_type(self, type_: types.ListType, **kw):
+        inner = self.process(type_.item_type, **kw)
+        return f"List<{inner}>"
+
+    def visit_ARRAY(self, type_: sa.ARRAY, **kw):
+        inner = self.process(type_.item_type, **kw)
+        return f"List<{inner}>"
+
+    def visit_struct_type(self, type_: types.StructType, **kw):
+        text = "Struct<"
+        for field, field_type in type_.fields_types:
+            text += f"{field}:{self.process(field_type, **kw)}"
+        return text + ">"
+
+    def get_ydb_type(
+        self, type_: sa.types.TypeEngine, is_optional: bool
+    ) -> Union[ydb.PrimitiveType, ydb.AbstractTypeBuilder]:
         if isinstance(type_, sa.TypeDecorator):
             type_ = type_.impl
 
@@ -134,6 +156,12 @@ class YqlTypeCompiler(StrSQLTypeCompiler):
             ydb_type = ydb.PrimitiveType.Bool
         elif isinstance(type_, sa.Numeric):
             ydb_type = ydb.DecimalType(type_.precision, type_.scale)
+        elif isinstance(type_, (types.ListType, sa.ARRAY)):
+            ydb_type = ydb.ListType(self.get_ydb_type(type_.item_type, is_optional=False))
+        elif isinstance(type_, types.StructType):
+            ydb_type = ydb.StructType()
+            for field, field_type in type_.fields_types.items():
+                ydb_type.add_member(field, self.get_ydb_type(field_type(), is_optional=False))
         else:
             raise dbapi.NotSupportedError(f"{type_} bind variables not supported")
 

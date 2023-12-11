@@ -48,6 +48,7 @@ from sqlalchemy.testing.suite.test_ddl import LongNameBlowoutTest as _LongNameBl
 from sqlalchemy.testing.suite.test_results import RowFetchTest as _RowFetchTest
 from sqlalchemy.testing.suite.test_deprecations import DeprecatedCompoundSelectTest as _DeprecatedCompoundSelectTest
 
+from ydb_sqlalchemy.sqlalchemy import types as ydb_sa_types
 
 test_types_suite = sqlalchemy.testing.suite.test_types
 col_creator = test_types_suite.Column
@@ -434,6 +435,71 @@ class StringTest(_StringTest):
         foo = Table("foo", metadata, Column("one", String, primary_key=True))
         foo.create(config.db)
         foo.drop(config.db)
+
+
+class ContainerTypesTest(fixtures.TablesTest):
+    @classmethod
+    def define_tables(cls, metadata):
+        Table(
+            "container_types_test",
+            metadata,
+            Column("id", Integer),
+            sa.PrimaryKeyConstraint("id"),
+            schema=None,
+            test_needs_fk=True,
+        )
+
+    def test_ARRAY_bind_variable(self, connection):
+        table = self.tables.container_types_test
+
+        connection.execute(sa.insert(table).values([{"id": 1}, {"id": 2}, {"id": 3}]))
+
+        stmt = select(table.c.id).where(table.c.id.in_(sa.bindparam("id", type_=sa.ARRAY(sa.Integer))))
+
+        eq_(connection.execute(stmt, {"id": [1, 2]}).fetchall(), [(1,), (2,)])
+
+    def test_list_type_bind_variable(self, connection):
+        table = self.tables.container_types_test
+
+        connection.execute(sa.insert(table).values([{"id": 1}, {"id": 2}, {"id": 3}]))
+
+        stmt = select(table.c.id).where(table.c.id.in_(sa.bindparam("id", type_=ydb_sa_types.ListType(sa.Integer))))
+
+        eq_(connection.execute(stmt, {"id": [1, 2]}).fetchall(), [(1,), (2,)])
+
+    def test_struct_type_bind_variable(self, connection):
+        table = self.tables.container_types_test
+
+        connection.execute(sa.insert(table).values([{"id": 1}, {"id": 2}, {"id": 3}]))
+
+        stmt = select(table.c.id).where(
+            table.c.id
+            == sa.text(":struct.id").bindparams(
+                sa.bindparam("struct", type_=ydb_sa_types.StructType({"id": sa.Integer})),
+            )
+        )
+
+        eq_(connection.scalar(stmt, {"struct": {"id": 1}}), 1)
+
+    def test_from_as_table(self, connection):
+        table = self.tables.container_types_test
+
+        connection.execute(
+            sa.insert(table).from_select(
+                ["id"],
+                sa.select(sa.column("id")).select_from(
+                    sa.func.as_table(
+                        sa.bindparam(
+                            "data",
+                            value=[{"id": 1}, {"id": 2}, {"id": 3}],
+                            type_=ydb_sa_types.ListType(ydb_sa_types.StructType({"id": sa.Integer})),
+                        )
+                    )
+                ),
+            )
+        )
+
+        eq_(connection.execute(sa.select(table)).fetchall(), [(1,), (2,), (3,)])
 
 
 @pytest.mark.skip("uuid unsupported for columns")
