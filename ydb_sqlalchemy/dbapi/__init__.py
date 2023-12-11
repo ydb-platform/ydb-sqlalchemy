@@ -1,4 +1,5 @@
 from .connection import Connection
+from .cursor import YdbOperation, Cursor
 from .errors import (
     Warning,
     Error,

@@ -18,10 +18,10 @@ from sqlalchemy.sql.compiler import (
 )
 from sqlalchemy.sql.elements import ClauseList
 from sqlalchemy.engine import reflection
-from sqlalchemy.engine.default import StrCompileDialect
+from sqlalchemy.engine.default import StrCompileDialect, DefaultExecutionContext
 from sqlalchemy.util.compat import inspect_getfullargspec
 
-from typing import Any, Optional, Union
+from typing import Any, Optional, Union, Sequence, Mapping, Tuple
 
 from .types import UInt32, UInt64
 
@@ -412,18 +412,59 @@ class YqlDialect(StrCompileDialect):
         # TODO: needs to implement?
         pass
 
-    def do_executemany(self, cursor, statement, parameters, context=None):
-        if context is not None and not context.isddl and context.compiled:
+    def _format_variables(
+        self,
+        statement: str,
+        parameters: Optional[Union[Sequence[Mapping[str, Any]], Mapping[str, Any]]],
+        execute_many: bool,
+    ) -> Tuple[str, Optional[Union[Sequence[Mapping[str, Any]], Mapping[str, Any]]]]:
+        formatted_statement = statement
+        formatted_parameters = None
+
+        if parameters:
+            if execute_many:
+                parameters_sequence: Sequence[Mapping[str, Any]] = parameters
+                variable_names = set()
+                formatted_parameters = []
+                for i in range(len(parameters_sequence)):
+                    variable_names.update(set(parameters_sequence[i].keys()))
+                    formatted_parameters.append({f"${k}": v for k, v in parameters_sequence[i].items()})
+            else:
+                variable_names = set(parameters.keys())
+                formatted_parameters = {f"${k}": v for k, v in parameters.items()}
+
+            formatted_variable_names = {variable_name: f"${variable_name}" for variable_name in variable_names}
+            formatted_statement = formatted_statement % formatted_variable_names
+
+        formatted_statement = formatted_statement.replace("%%", "%")
+        return formatted_statement, formatted_parameters
+
+    def do_executemany(
+        self,
+        cursor: dbapi.Cursor,
+        statement: str,
+        parameters: Optional[Sequence[Mapping[str, Any]]],
+        context: Optional[DefaultExecutionContext] = None,
+    ) -> None:
+        is_ddl = context.isddl if context is not None else False
+        if not is_ddl and context.compiled:
             statement = context.compiled.render_declare(parameters) + "\n" + statement
 
-        cursor.executemany(statement, parameters)
+        statement, parameters = self._format_variables(statement, parameters, execute_many=True)
+        operation = dbapi.YdbOperation(is_ddl=is_ddl, yql_text=statement)
+        cursor.executemany(operation, parameters)
 
-    def do_execute(self, cursor, statement, parameters, context=None) -> None:
-        c = None
-        if context is not None:
-            if context.isddl:
-                c = {"isddl": True}
-            elif context.compiled:
-                statement = context.compiled.render_declare(parameters) + "\n" + statement
+    def do_execute(
+        self,
+        cursor: dbapi.Cursor,
+        statement: str,
+        parameters: Optional[Mapping[str, Any]] = None,
+        context: Optional[DefaultExecutionContext] = None,
+    ) -> None:
+        is_ddl = context.isddl if context is not None else False
+        if not is_ddl and context.compiled:
+            statement = context.compiled.render_declare(parameters) + "\n" + statement
 
-        cursor.execute(statement, parameters, c)
+        statement, parameters = self._format_variables(statement, parameters, execute_many=False)
+        operation = dbapi.YdbOperation(is_ddl=is_ddl, yql_text=statement)
+        cursor.execute(operation, parameters)

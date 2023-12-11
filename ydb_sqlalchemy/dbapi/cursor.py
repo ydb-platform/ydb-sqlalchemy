@@ -1,7 +1,7 @@
 import itertools
 import logging
 
-from typing import Any
+from typing import Any, Mapping, Optional, Sequence
 
 import ydb
 from .errors import (
@@ -22,6 +22,17 @@ def get_column_type(type_obj: Any) -> str:
     return str(ydb.convert.type_to_native(type_obj))
 
 
+class YdbOperation:
+    __slots__ = ("yql_text", "data_query", "is_ddl")
+
+    def __init__(
+            self, is_ddl: bool, yql_text: Optional[str] = None, data_query: Optional[ydb.DataQuery] = None
+    ):
+        self.yql_text = yql_text
+        self.data_query = data_query
+        self.is_ddl = is_ddl
+
+
 class Cursor(object):
     def __init__(self, connection):
         self.connection = connection
@@ -30,25 +41,23 @@ class Cursor(object):
         self.rows = None
         self._rows_prefetched = None
 
-    def execute(self, sql, parameters=None, context=None):
+    def execute(self, operation: YdbOperation, parameters: Optional[Mapping[str, Any]] = None):
         self.description = None
 
-        if parameters:
-            sql = sql % {k: f"${k}" for k, v in parameters.items()}
-            sql_params = {f"${k}": v for k, v in parameters.items()}
+        if operation.is_ddl:
+            query = operation.yql_text
         else:
-            sql_params = parameters
-        sql = sql.replace("%%", "%")
+            query = operation.data_query or operation.yql_text
 
-        logger.info("execute sql: %s, params: %s", sql, sql_params)
+        logger.info("execute sql: %s, params: %s", query, parameters)
 
         def _execute_in_pool(cli):
             try:
-                if context and context.get("isddl"):
-                    return cli.execute_scheme(sql)
+                if operation.is_ddl:
+                    return cli.execute_scheme(query)
                 else:
-                    prepared_query = cli.prepare(sql)
-                    return cli.transaction().execute(prepared_query, sql_params, commit_tx=True)
+                    prepared_query = cli.prepare(query)
+                    return cli.transaction().execute(prepared_query, parameters, commit_tx=True)
             except (ydb.issues.AlreadyExists, ydb.issues.PreconditionFailed) as e:
                 raise IntegrityError(e.message, e.issues, e.status) from e
             except (ydb.issues.Unsupported, ydb.issues.Unimplemented) as e:
@@ -118,9 +127,9 @@ class Cursor(object):
             self.rows = iter(self._rows_prefetched)
         return self._rows_prefetched
 
-    def executemany(self, sql, seq_of_parameters):
+    def executemany(self, operation: YdbOperation, seq_of_parameters: Optional[Sequence[Mapping[str, Any]]]):
         for parameters in seq_of_parameters:
-            self.execute(sql, parameters)
+            self.execute(operation, parameters)
 
     def executescript(self, script):
         return self.execute(script)
