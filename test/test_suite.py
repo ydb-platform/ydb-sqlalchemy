@@ -266,6 +266,13 @@ class TrueDivTest(_TrueDivTest):
         # SqlAlchemy maybe eat Decimal and throw Double
         pass
 
+    @testing.combinations(("6.25", "2.5", 2.5), argnames="left, right, expected")
+    def test_truediv_float(self, connection, left, right, expected):
+        eq_(
+            connection.scalar(select(literal_column(left, type_=sa.Float()) / literal_column(right, type_=sa.Float()))),
+            expected,
+        )
+
 
 class ExistsTest(_ExistsTest):
     """

@@ -189,7 +189,7 @@ class TestTypes(TablesTest):
             id=1,
             # bin=b"abc",
             str="Hello World!",
-            num=3.1415,
+            num=3.5,
             bl=True,
             ts=now,
             date=today,
@@ -198,4 +198,4 @@ class TestTypes(TablesTest):
         connection.execute(stm)
 
         row = connection.execute(sa.select(tb)).fetchone()
-        assert row == (1, "Hello World!", 3.1415, True, now, today)
+        assert row == (1, "Hello World!", 3.5, True, now, today)

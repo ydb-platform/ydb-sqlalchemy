@@ -1,7 +1,7 @@
 import itertools
 import logging
 
-from typing import Any, Mapping, Optional, Sequence
+from typing import Any, Mapping, Optional, Sequence, Union
 
 import ydb
 from .errors import (
@@ -23,14 +23,17 @@ def get_column_type(type_obj: Any) -> str:
 
 
 class YdbOperation:
-    __slots__ = ("yql_text", "data_query", "is_ddl")
+    __slots__ = ("yql_text", "is_ddl", "parameters_types")
 
     def __init__(
-            self, is_ddl: bool, yql_text: Optional[str] = None, data_query: Optional[ydb.DataQuery] = None
+        self,
+        yql_text: str,
+        is_ddl: bool,
+        parameters_types: Optional[Mapping[str, Union[ydb.PrimitiveType, ydb.AbstractTypeBuilder]]] = None,
     ):
         self.yql_text = yql_text
-        self.data_query = data_query
         self.is_ddl = is_ddl
+        self.parameters_types = parameters_types or {}
 
 
 class Cursor(object):
@@ -44,20 +47,25 @@ class Cursor(object):
     def execute(self, operation: YdbOperation, parameters: Optional[Mapping[str, Any]] = None):
         self.description = None
 
-        if operation.is_ddl:
+        if operation.is_ddl or not operation.parameters_types:
             query = operation.yql_text
+            is_ddl = operation.is_ddl
         else:
-            query = operation.data_query or operation.yql_text
+            query = ydb.DataQuery(operation.yql_text, operation.parameters_types)
+            is_ddl = operation.is_ddl
 
         logger.info("execute sql: %s, params: %s", query, parameters)
 
-        def _execute_in_pool(cli):
+        def _execute_in_pool(cli: ydb.Session):
             try:
-                if operation.is_ddl:
+                if is_ddl:
                     return cli.execute_scheme(query)
-                else:
+
+                prepared_query = query
+                if isinstance(query, str) and parameters:
                     prepared_query = cli.prepare(query)
-                    return cli.transaction().execute(prepared_query, parameters, commit_tx=True)
+
+                return cli.transaction().execute(prepared_query, parameters, commit_tx=True)
             except (ydb.issues.AlreadyExists, ydb.issues.PreconditionFailed) as e:
                 raise IntegrityError(e.message, e.issues, e.status) from e
             except (ydb.issues.Unsupported, ydb.issues.Unimplemented) as e:
