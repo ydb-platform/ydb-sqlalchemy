@@ -298,7 +298,7 @@ class YqlCompiler(StrSQLCompiler):
 
     def get_bind_types(
         self, post_compile_parameters: Optional[Union[Sequence[Mapping[str, Any]], Mapping[str, Any]]]
-    ) -> Mapping[str, Union[ydb.PrimitiveType, ydb.AbstractTypeBuilder]]:
+    ) -> dict[str, Union[ydb.PrimitiveType, ydb.AbstractTypeBuilder]]:
         """
         This method extracts information about bound variables from the table definition and parameters.
         """

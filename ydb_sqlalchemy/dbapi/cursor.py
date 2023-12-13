@@ -1,3 +1,4 @@
+import dataclasses
 import itertools
 import logging
 
@@ -22,18 +23,11 @@ def get_column_type(type_obj: Any) -> str:
     return str(ydb.convert.type_to_native(type_obj))
 
 
+@dataclasses.dataclass
 class YdbOperation:
-    __slots__ = ("yql_text", "is_ddl", "parameters_types")
-
-    def __init__(
-        self,
-        yql_text: str,
-        is_ddl: bool,
-        parameters_types: Optional[Mapping[str, Union[ydb.PrimitiveType, ydb.AbstractTypeBuilder]]] = None,
-    ):
-        self.yql_text = yql_text
-        self.is_ddl = is_ddl
-        self.parameters_types = parameters_types or {}
+    yql_text: str
+    is_ddl: bool
+    parameters_types: dict[str, Union[ydb.PrimitiveType, ydb.AbstractTypeBuilder]] = dataclasses.field(default_factory=dict)
 
 
 class Cursor(object):
