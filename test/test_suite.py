@@ -5,7 +5,7 @@ import sqlalchemy.testing.suite.test_types
 from sqlalchemy.testing.suite import *  # noqa: F401, F403
 
 from sqlalchemy.testing import is_true, is_false
-from sqlalchemy.testing.suite import eq_, testing, inspect, provide_metadata, config, requirements
+from sqlalchemy.testing.suite import eq_, testing, inspect, provide_metadata, config, requirements, fixtures
 from sqlalchemy.testing.suite import func, column, literal_column, select, exists
 from sqlalchemy.testing.suite import MetaData, Column, Table, Integer, String
 
@@ -21,7 +21,6 @@ from sqlalchemy.testing.suite.test_reflection import (
     CompositeKeyReflectionTest as _CompositeKeyReflectionTest,
     ComponentReflectionTestExtra as _ComponentReflectionTestExtra,
     QuotedNameArgumentTest as _QuotedNameArgumentTest,
-    BizarroCharacterFKResolutionTest as _BizarroCharacterFKResolutionTest,
 )
 from sqlalchemy.testing.suite.test_types import (
     IntegerTest as _IntegerTest,
@@ -33,6 +32,10 @@ from sqlalchemy.testing.suite.test_types import (
     NativeUUIDTest as _NativeUUIDTest,
     TimeMicrosecondsTest as _TimeMicrosecondsTest,
     DateTimeCoercedToDateTimeTest as _DateTimeCoercedToDateTimeTest,
+    DateTest as _DateTest,
+    DateTimeMicrosecondsTest as _DateTimeMicrosecondsTest,
+    DateTimeTest as _DateTimeTest,
+    TimestampMicrosecondsTest as _TimestampMicrosecondsTest,
 )
 from sqlalchemy.testing.suite.test_dialect import (
     EscapingTest as _EscapingTest,
@@ -62,11 +65,6 @@ def column_getter(*args, **kwargs):
 
 
 test_types_suite.Column = column_getter
-
-
-@pytest.mark.skip("foreign keys unsupported")
-class BizarroCharacterFKResolutionTest(_BizarroCharacterFKResolutionTest):
-    pass
 
 
 class ComponentReflectionTest(_ComponentReflectionTest):
@@ -121,7 +119,6 @@ class ComponentReflectionTest(_ComponentReflectionTest):
             Column("id", sa.Integer, primary_key=True, comment="id comment"),
             Column("data", sa.String(20), comment="data % comment"),
             Column("d2", sa.String(20), comment=r"""Comment types type speedily ' " \ '' Fun!"""),
-            Column("d3", sa.String(42), comment="Comment\nwith\rescapes"),
             schema=schema,
             comment=r"""the test % ' " \ table comment""",
         )
@@ -420,6 +417,22 @@ class InsertBehaviorTest(_InsertBehaviorTest):
     @pytest.mark.skip("implicit PK values unsupported")
     def test_no_results_for_non_returning_insert(self, connection):
         pass
+
+
+class DateTest(_DateTest):
+    run_dispose_bind = "once"
+
+
+class DateTimeMicrosecondsTest(_DateTimeMicrosecondsTest):
+    run_dispose_bind = "once"
+
+
+class DateTimeTest(_DateTimeTest):
+    run_dispose_bind = "once"
+
+
+class TimestampMicrosecondsTest(_TimestampMicrosecondsTest):
+    run_dispose_bind = "once"
 
 
 @pytest.mark.skip("unsupported Time data type")

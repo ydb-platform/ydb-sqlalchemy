@@ -2,7 +2,7 @@ import dataclasses
 import itertools
 import logging
 
-from typing import Any, Mapping, Optional, Sequence, Union
+from typing import Any, Mapping, Optional, Sequence, Union, Dict
 
 import ydb
 from .errors import (
@@ -24,10 +24,12 @@ def get_column_type(type_obj: Any) -> str:
 
 
 @dataclasses.dataclass
-class YdbOperation:
+class YdbQuery:
     yql_text: str
-    is_ddl: bool
-    parameters_types: dict[str, Union[ydb.PrimitiveType, ydb.AbstractTypeBuilder]] = dataclasses.field(default_factory=dict)
+    parameters_types: Dict[str, Union[ydb.PrimitiveType, ydb.AbstractTypeBuilder]] = dataclasses.field(
+        default_factory=dict
+    )
+    is_ddl: bool = False
 
 
 class Cursor(object):
@@ -38,7 +40,7 @@ class Cursor(object):
         self.rows = None
         self._rows_prefetched = None
 
-    def execute(self, operation: YdbOperation, parameters: Optional[Mapping[str, Any]] = None):
+    def execute(self, operation: YdbQuery, parameters: Optional[Mapping[str, Any]] = None):
         self.description = None
 
         if operation.is_ddl or not operation.parameters_types:
@@ -129,7 +131,7 @@ class Cursor(object):
             self.rows = iter(self._rows_prefetched)
         return self._rows_prefetched
 
-    def executemany(self, operation: YdbOperation, seq_of_parameters: Optional[Sequence[Mapping[str, Any]]]):
+    def executemany(self, operation: YdbQuery, seq_of_parameters: Optional[Sequence[Mapping[str, Any]]]):
         for parameters in seq_of_parameters:
             self.execute(operation, parameters)
 

@@ -22,9 +22,9 @@ from sqlalchemy.engine import reflection
 from sqlalchemy.engine.default import StrCompileDialect, DefaultExecutionContext
 from sqlalchemy.util.compat import inspect_getfullargspec
 
-from typing import Any, Union, Mapping, Sequence, Optional, Tuple
+from typing import Any, Union, Mapping, Sequence, Optional, Tuple, List, Dict
 
-from .types import UInt32, UInt64
+from . import types
 
 STR_QUOTE_MAP = {
     "'": "\\'",
@@ -136,7 +136,7 @@ class YqlTypeCompiler(StrSQLTypeCompiler):
             ydb_type = ydb.PrimitiveType.Int64
         elif isinstance(type_, sa.JSON):
             ydb_type = ydb.PrimitiveType.Json
-        elif isinstance(type_, (sa.DateTime, sa.TIMESTAMP)):
+        elif isinstance(type_, sa.DateTime):
             ydb_type = ydb.PrimitiveType.Timestamp
         elif isinstance(type_, sa.Date):
             ydb_type = ydb.PrimitiveType.Date
@@ -288,7 +288,7 @@ class YqlCompiler(StrSQLCompiler):
 
         return bind_type
 
-    def _get_expanding_bind_names(self, bind_name: str, parameters_values: Mapping[str, list[Any]]) -> list[Any]:
+    def _get_expanding_bind_names(self, bind_name: str, parameters_values: Mapping[str, List[Any]]) -> List[Any]:
         expanding_bind_names = []
         for parameter_name in parameters_values:
             parameter_bind_name = "_".join(parameter_name.split("_")[:-1])
@@ -298,7 +298,7 @@ class YqlCompiler(StrSQLCompiler):
 
     def get_bind_types(
         self, post_compile_parameters: Optional[Union[Sequence[Mapping[str, Any]], Mapping[str, Any]]]
-    ) -> dict[str, Union[ydb.PrimitiveType, ydb.AbstractTypeBuilder]]:
+    ) -> Dict[str, Union[ydb.PrimitiveType, ydb.AbstractTypeBuilder]]:
         """
         This method extracts information about bound variables from the table definition and parameters.
         """
@@ -357,8 +357,8 @@ COLUMN_TYPES = {
     ydb.PrimitiveType.Int64: sa.INTEGER,
     ydb.PrimitiveType.Uint8: sa.INTEGER,
     ydb.PrimitiveType.Uint16: sa.INTEGER,
-    ydb.PrimitiveType.Uint32: UInt32,
-    ydb.PrimitiveType.Uint64: UInt64,
+    ydb.PrimitiveType.Uint32: types.UInt32,
+    ydb.PrimitiveType.Uint64: types.UInt64,
     ydb.PrimitiveType.Float: sa.FLOAT,
     ydb.PrimitiveType.Double: sa.FLOAT,
     ydb.PrimitiveType.String: sa.BINARY,
@@ -528,17 +528,17 @@ class YqlDialect(StrCompileDialect):
         context: Optional[DefaultExecutionContext] = None,
         parameters: Optional[Union[Sequence[Mapping[str, Any]], Mapping[str, Any]]] = None,
         execute_many: bool = False,
-    ) -> Tuple[dbapi.YdbOperation, Optional[Union[Sequence[Mapping[str, Any]], Mapping[str, Any]]]]:
+    ) -> Tuple[dbapi.YdbQuery, Optional[Union[Sequence[Mapping[str, Any]], Mapping[str, Any]]]]:
         is_ddl = context.isddl if context is not None else False
 
         if not is_ddl and parameters:
             parameters_types = context.compiled.get_bind_types(parameters)
             parameters_types = {f"${k}": v for k, v in parameters_types.items()}
             statement, parameters = self._format_variables(statement, parameters, execute_many)
-            return dbapi.YdbOperation(is_ddl=is_ddl, yql_text=statement, parameters_types=parameters_types), parameters
+            return dbapi.YdbQuery(yql_text=statement, parameters_types=parameters_types, is_ddl=is_ddl), parameters
 
         statement, parameters = self._format_variables(statement, parameters, execute_many)
-        return dbapi.YdbOperation(is_ddl=is_ddl, yql_text=statement), parameters
+        return dbapi.YdbQuery(yql_text=statement, is_ddl=is_ddl), parameters
 
     def do_ping(self, dbapi_connection: dbapi.Connection) -> bool:
         cursor = dbapi_connection.cursor()
