@@ -18,7 +18,13 @@ class TestText(TestBase):
         assert rs.fetchone() == (1,)
 
         rs = connection.execute(
-            sa.text("SELECT x, y FROM AS_TABLE(:data)"), [{"data": [{"x": 2, "y": 1}, {"x": 3, "y": 2}]}]
+            sa.text(
+                """
+                DECLARE :data AS List<Struct<x:Int64, y:Int64>>;
+                SELECT x, y FROM AS_TABLE(:data)
+                """
+            ),
+            [{"data": [{"x": 2, "y": 1}, {"x": 3, "y": 2}]}],
         )
         assert set(rs.fetchall()) == {(2, 1), (3, 2)}
 
@@ -184,7 +190,7 @@ class TestTypes(TablesTest):
             id=1,
             # bin=b"abc",
             str="Hello World!",
-            num=3.1415,
+            num=3.5,
             bl=True,
             ts=now,
             date=today,
@@ -193,4 +199,4 @@ class TestTypes(TablesTest):
         connection.execute(stm)
 
         row = connection.execute(sa.select(tb)).fetchone()
-        assert row == (1, "Hello World!", 3.1415, True, now, today)
+        assert row == (1, "Hello World!", 3.5, True, now, today)

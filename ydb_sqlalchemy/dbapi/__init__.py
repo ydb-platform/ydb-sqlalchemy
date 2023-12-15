@@ -1,4 +1,5 @@
 from .connection import Connection
+from .cursor import Cursor, YdbQuery  # noqa: F401
 from .errors import (
     Warning,
     Error,

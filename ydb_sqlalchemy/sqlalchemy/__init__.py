@@ -2,6 +2,7 @@
 Experimental
 Work in progress, breaking changes are possible.
 """
+import collections
 import ydb
 import ydb_sqlalchemy.dbapi as dbapi
 from ydb_sqlalchemy.dbapi.constants import YDB_KEYWORDS
@@ -18,12 +19,12 @@ from sqlalchemy.sql.compiler import (
 )
 from sqlalchemy.sql.elements import ClauseList
 from sqlalchemy.engine import reflection
-from sqlalchemy.engine.default import StrCompileDialect
+from sqlalchemy.engine.default import StrCompileDialect, DefaultExecutionContext
 from sqlalchemy.util.compat import inspect_getfullargspec
 
-from typing import Any
+from typing import Any, Union, Mapping, Sequence, Optional, Tuple, List, Dict
 
-from .types import UInt32, UInt64
+from . import types
 
 STR_QUOTE_MAP = {
     "'": "\\'",
@@ -60,54 +61,108 @@ class YqlIdentifierPreparer(IdentifierPreparer):
 
 
 class YqlTypeCompiler(StrSQLTypeCompiler):
-    def visit_CHAR(self, type_, **kw):
+    def visit_CHAR(self, type_: sa.CHAR, **kw):
         return "UTF8"
 
-    def visit_VARCHAR(self, type_, **kw):
+    def visit_VARCHAR(self, type_: sa.VARCHAR, **kw):
         return "UTF8"
 
-    def visit_unicode(self, type_, **kw):
+    def visit_unicode(self, type_: sa.Unicode, **kw):
         return "UTF8"
 
-    def visit_uuid(self, type_, **kw):
+    def visit_uuid(self, type_: sa.Uuid, **kw):
         return "UTF8"
 
-    def visit_NVARCHAR(self, type_, **kw):
+    def visit_NVARCHAR(self, type_: sa.NVARCHAR, **kw):
         return "UTF8"
 
-    def visit_TEXT(self, type_, **kw):
+    def visit_TEXT(self, type_: sa.TEXT, **kw):
         return "UTF8"
 
-    def visit_FLOAT(self, type_, **kw):
-        return "DOUBLE"
+    def visit_FLOAT(self, type_: sa.FLOAT, **kw):
+        return "FLOAT"
 
-    def visit_BOOLEAN(self, type_, **kw):
+    def visit_BOOLEAN(self, type_: sa.BOOLEAN, **kw):
         return "BOOL"
 
-    def visit_uint32(self, type_, **kw):
+    def visit_uint32(self, type_: types.UInt32, **kw):
         return "UInt32"
 
-    def visit_uint64(self, type_, **kw):
+    def visit_uint64(self, type_: types.UInt64, **kw):
         return "UInt64"
 
-    def visit_uint8(self, type_, **kw):
+    def visit_uint8(self, type_: types.UInt8, **kw):
         return "UInt8"
 
-    def visit_INTEGER(self, type_, **kw):
+    def visit_INTEGER(self, type_: sa.INTEGER, **kw):
         return "Int64"
 
-    def visit_NUMERIC(self, type_, **kw):
+    def visit_NUMERIC(self, type_: sa.Numeric, **kw):
         """Only Decimal(22,9) is supported for table columns"""
         return f"Decimal({type_.precision}, {type_.scale})"
 
-    def visit_BINARY(self, type_, **kw):
+    def visit_BINARY(self, type_: sa.BINARY, **kw):
         return "String"
 
-    def visit_BLOB(self, type_, **kw):
+    def visit_BLOB(self, type_: sa.BLOB, **kw):
         return "String"
 
-    def visit_DATETIME(self, type_, **kw):
+    def visit_DATETIME(self, type_: sa.TIMESTAMP, **kw):
         return "Timestamp"
+
+    def visit_list_type(self, type_: types.ListType, **kw):
+        inner = self.process(type_.item_type, **kw)
+        return f"List<{inner}>"
+
+    def visit_ARRAY(self, type_: sa.ARRAY, **kw):
+        inner = self.process(type_.item_type, **kw)
+        return f"List<{inner}>"
+
+    def visit_struct_type(self, type_: types.StructType, **kw):
+        text = "Struct<"
+        for field, field_type in type_.fields_types:
+            text += f"{field}:{self.process(field_type, **kw)}"
+        return text + ">"
+
+    def get_ydb_type(
+        self, type_: sa.types.TypeEngine, is_optional: bool
+    ) -> Union[ydb.PrimitiveType, ydb.AbstractTypeBuilder]:
+        if isinstance(type_, sa.TypeDecorator):
+            type_ = type_.impl
+
+        if isinstance(type_, (sa.Text, sa.String, sa.Uuid)):
+            ydb_type = ydb.PrimitiveType.Utf8
+        elif isinstance(type_, sa.Integer):
+            ydb_type = ydb.PrimitiveType.Int64
+        elif isinstance(type_, sa.JSON):
+            ydb_type = ydb.PrimitiveType.Json
+        elif isinstance(type_, sa.DateTime):
+            ydb_type = ydb.PrimitiveType.Timestamp
+        elif isinstance(type_, sa.Date):
+            ydb_type = ydb.PrimitiveType.Date
+        elif isinstance(type_, sa.BINARY):
+            ydb_type = ydb.PrimitiveType.String
+        elif isinstance(type_, sa.Float):
+            ydb_type = ydb.PrimitiveType.Float
+        elif isinstance(type_, sa.Double):
+            ydb_type = ydb.PrimitiveType.Double
+        elif isinstance(type_, sa.Boolean):
+            ydb_type = ydb.PrimitiveType.Bool
+        elif isinstance(type_, sa.Numeric):
+            ydb_type = ydb.DecimalType(type_.precision, type_.scale)
+        elif isinstance(type_, (types.ListType, sa.ARRAY)):
+            ydb_type = ydb.ListType(self.get_ydb_type(type_.item_type, is_optional=False))
+        elif isinstance(type_, types.StructType):
+            ydb_type = ydb.StructType()
+            for field, field_type in type_.fields_types.items():
+                ydb_type.add_member(field, self.get_ydb_type(field_type(), is_optional=False))
+        else:
+            raise dbapi.NotSupportedError(f"{type_} bind variables not supported")
+
+        if is_optional:
+            return ydb.OptionalType(ydb_type)
+
+        return ydb_type
 
 
 class ParametrizedFunction(functions.Function):
@@ -210,6 +265,82 @@ class YqlCompiler(StrSQLCompiler):
     def visit_not_regexp_match_op_binary(self, binary, operator, **kw):
         return self._generate_generic_binary(binary, " NOT REGEXP ", **kw)
 
+    def _is_bound_to_nullable_column(self, bind_name: str) -> bool:
+        if bind_name in self.column_keys and hasattr(self.compile_state, "dml_table"):
+            if bind_name in self.compile_state.dml_table.c:
+                column = self.compile_state.dml_table.c[bind_name]
+                return not column.primary_key
+        return False
+
+    def _guess_bound_variable_type_by_parameters(
+        self, bind: sa.BindParameter, post_compile_bind_values: list
+    ) -> Optional[sa.types.TypeEngine]:
+        if not bind.expanding:
+            if isinstance(bind.type, sa.types.NullType):
+                return None
+            bind_type = bind.type
+        else:
+            not_null_values = [v for v in post_compile_bind_values if v is not None]
+            if not_null_values:
+                bind_type = sa.BindParameter("", not_null_values[0]).type
+            else:
+                return None
+
+        return bind_type
+
+    def _get_expanding_bind_names(self, bind_name: str, parameters_values: Mapping[str, List[Any]]) -> List[Any]:
+        expanding_bind_names = []
+        for parameter_name in parameters_values:
+            parameter_bind_name = "_".join(parameter_name.split("_")[:-1])
+            if parameter_bind_name == bind_name:
+                expanding_bind_names.append(parameter_name)
+        return expanding_bind_names
+
+    def get_bind_types(
+        self, post_compile_parameters: Optional[Union[Sequence[Mapping[str, Any]], Mapping[str, Any]]]
+    ) -> Dict[str, Union[ydb.PrimitiveType, ydb.AbstractTypeBuilder]]:
+        """
+        This method extracts information about bound variables from the table definition and parameters.
+        """
+        if isinstance(post_compile_parameters, collections.Mapping):
+            post_compile_parameters = [post_compile_parameters]
+
+        parameters_values = collections.defaultdict(list)
+        for parameters_entry in post_compile_parameters:
+            for parameter_name, parameter_value in parameters_entry.items():
+                parameters_values[parameter_name].append(parameter_value)
+
+        parameter_types = {}
+        for bind_name in self.bind_names.values():
+            bind = self.binds[bind_name]
+
+            if bind.literal_execute:
+                continue
+
+            if not bind.expanding:
+                post_compile_bind_names = [bind_name]
+                post_compile_bind_values = parameters_values[bind_name]
+            else:
+                post_compile_bind_names = self._get_expanding_bind_names(bind_name, parameters_values)
+                post_compile_bind_values = []
+                for parameter_name, parameter_values in parameters_values.items():
+                    if parameter_name in post_compile_bind_names:
+                        post_compile_bind_values.extend(parameter_values)
+
+            is_optional = self._is_bound_to_nullable_column(bind_name)
+            if not post_compile_bind_values or None in post_compile_bind_values:
+                is_optional = True
+
+            bind_type = self._guess_bound_variable_type_by_parameters(bind, post_compile_bind_values)
+
+            if bind_type:
+                for post_compile_bind_name in post_compile_bind_names:
+                    parameter_types[post_compile_bind_name] = YqlTypeCompiler(self.dialect).get_ydb_type(
+                        bind_type, is_optional
+                    )
+
+        return parameter_types
+
 
 class YqlDDLCompiler(DDLCompiler):
     pass
@@ -226,8 +357,8 @@ COLUMN_TYPES = {
     ydb.PrimitiveType.Int64: sa.INTEGER,
     ydb.PrimitiveType.Uint8: sa.INTEGER,
     ydb.PrimitiveType.Uint16: sa.INTEGER,
-    ydb.PrimitiveType.Uint32: UInt32,
-    ydb.PrimitiveType.Uint64: UInt64,
+    ydb.PrimitiveType.Uint32: types.UInt32,
+    ydb.PrimitiveType.Uint64: types.UInt64,
     ydb.PrimitiveType.Float: sa.FLOAT,
     ydb.PrimitiveType.Double: sa.FLOAT,
     ydb.PrimitiveType.String: sa.BINARY,
@@ -364,8 +495,76 @@ class YqlDialect(StrCompileDialect):
         # TODO: needs to implement?
         pass
 
-    def do_execute(self, cursor, statement, parameters, context=None) -> None:
-        c = None
-        if context is not None and context.isddl:
-            c = {"isddl": True}
-        cursor.execute(statement, parameters, c)
+    def _format_variables(
+        self,
+        statement: str,
+        parameters: Optional[Union[Sequence[Mapping[str, Any]], Mapping[str, Any]]],
+        execute_many: bool,
+    ) -> Tuple[str, Optional[Union[Sequence[Mapping[str, Any]], Mapping[str, Any]]]]:
+        formatted_statement = statement
+        formatted_parameters = None
+
+        if parameters:
+            if execute_many:
+                parameters_sequence: Sequence[Mapping[str, Any]] = parameters
+                variable_names = set()
+                formatted_parameters = []
+                for i in range(len(parameters_sequence)):
+                    variable_names.update(set(parameters_sequence[i].keys()))
+                    formatted_parameters.append({f"${k}": v for k, v in parameters_sequence[i].items()})
+            else:
+                variable_names = set(parameters.keys())
+                formatted_parameters = {f"${k}": v for k, v in parameters.items()}
+
+            formatted_variable_names = {variable_name: f"${variable_name}" for variable_name in variable_names}
+            formatted_statement = formatted_statement % formatted_variable_names
+
+        formatted_statement = formatted_statement.replace("%%", "%")
+        return formatted_statement, formatted_parameters
+
+    def _make_ydb_operation(
+        self,
+        statement: str,
+        context: Optional[DefaultExecutionContext] = None,
+        parameters: Optional[Union[Sequence[Mapping[str, Any]], Mapping[str, Any]]] = None,
+        execute_many: bool = False,
+    ) -> Tuple[dbapi.YdbQuery, Optional[Union[Sequence[Mapping[str, Any]], Mapping[str, Any]]]]:
+        is_ddl = context.isddl if context is not None else False
+
+        if not is_ddl and parameters:
+            parameters_types = context.compiled.get_bind_types(parameters)
+            parameters_types = {f"${k}": v for k, v in parameters_types.items()}
+            statement, parameters = self._format_variables(statement, parameters, execute_many)
+            return dbapi.YdbQuery(yql_text=statement, parameters_types=parameters_types, is_ddl=is_ddl), parameters
+
+        statement, parameters = self._format_variables(statement, parameters, execute_many)
+        return dbapi.YdbQuery(yql_text=statement, is_ddl=is_ddl), parameters
+
+    def do_ping(self, dbapi_connection: dbapi.Connection) -> bool:
+        cursor = dbapi_connection.cursor()
+        statement, _ = self._make_ydb_operation(self._dialect_specific_select_one)
+        try:
+            cursor.execute(statement)
+        finally:
+            cursor.close()
+        return True
+
+    def do_executemany(
+        self,
+        cursor: dbapi.Cursor,
+        statement: str,
+        parameters: Optional[Sequence[Mapping[str, Any]]],
+        context: Optional[DefaultExecutionContext] = None,
+    ) -> None:
+        operation, parameters = self._make_ydb_operation(statement, context, parameters, execute_many=True)
+        cursor.executemany(operation, parameters)
+
+    def do_execute(
+        self,
+        cursor: dbapi.Cursor,
+        statement: str,
+        parameters: Optional[Mapping[str, Any]] = None,
+        context: Optional[DefaultExecutionContext] = None,
+    ) -> None:
+        operation, parameters = self._make_ydb_operation(statement, context, parameters, execute_many=False)
+        cursor.execute(operation, parameters)

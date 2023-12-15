@@ -5,7 +5,7 @@ import sqlalchemy.testing.suite.test_types
 from sqlalchemy.testing.suite import *  # noqa: F401, F403
 
 from sqlalchemy.testing import is_true, is_false
-from sqlalchemy.testing.suite import eq_, testing, inspect, provide_metadata, config, requirements
+from sqlalchemy.testing.suite import eq_, testing, inspect, provide_metadata, config, requirements, fixtures
 from sqlalchemy.testing.suite import func, column, literal_column, select, exists
 from sqlalchemy.testing.suite import MetaData, Column, Table, Integer, String
 
@@ -32,6 +32,10 @@ from sqlalchemy.testing.suite.test_types import (
     NativeUUIDTest as _NativeUUIDTest,
     TimeMicrosecondsTest as _TimeMicrosecondsTest,
     DateTimeCoercedToDateTimeTest as _DateTimeCoercedToDateTimeTest,
+    DateTest as _DateTest,
+    DateTimeMicrosecondsTest as _DateTimeMicrosecondsTest,
+    DateTimeTest as _DateTimeTest,
+    TimestampMicrosecondsTest as _TimestampMicrosecondsTest,
 )
 from sqlalchemy.testing.suite.test_dialect import (
     EscapingTest as _EscapingTest,
@@ -47,6 +51,7 @@ from sqlalchemy.testing.suite.test_ddl import LongNameBlowoutTest as _LongNameBl
 from sqlalchemy.testing.suite.test_results import RowFetchTest as _RowFetchTest
 from sqlalchemy.testing.suite.test_deprecations import DeprecatedCompoundSelectTest as _DeprecatedCompoundSelectTest
 
+from ydb_sqlalchemy.sqlalchemy import types as ydb_sa_types
 
 test_types_suite = sqlalchemy.testing.suite.test_types
 col_creator = test_types_suite.Column
@@ -259,6 +264,13 @@ class TrueDivTest(_TrueDivTest):
         # SqlAlchemy maybe eat Decimal and throw Double
         pass
 
+    @testing.combinations(("6.25", "2.5", 2.5), argnames="left, right, expected")
+    def test_truediv_float(self, connection, left, right, expected):
+        eq_(
+            connection.scalar(select(literal_column(left, type_=sa.Float()) / literal_column(right, type_=sa.Float()))),
+            expected,
+        )
+
 
 class ExistsTest(_ExistsTest):
     """
@@ -402,6 +414,26 @@ class InsertBehaviorTest(_InsertBehaviorTest):
     def test_insert_from_select_autoinc_no_rows(self, connection):
         pass
 
+    @pytest.mark.skip("implicit PK values unsupported")
+    def test_no_results_for_non_returning_insert(self, connection):
+        pass
+
+
+class DateTest(_DateTest):
+    run_dispose_bind = "once"
+
+
+class DateTimeMicrosecondsTest(_DateTimeMicrosecondsTest):
+    run_dispose_bind = "once"
+
+
+class DateTimeTest(_DateTimeTest):
+    run_dispose_bind = "once"
+
+
+class TimestampMicrosecondsTest(_TimestampMicrosecondsTest):
+    run_dispose_bind = "once"
+
 
 @pytest.mark.skip("unsupported Time data type")
 class TimeTest(_TimeTest):
@@ -416,6 +448,71 @@ class StringTest(_StringTest):
         foo = Table("foo", metadata, Column("one", String, primary_key=True))
         foo.create(config.db)
         foo.drop(config.db)
+
+
+class ContainerTypesTest(fixtures.TablesTest):
+    @classmethod
+    def define_tables(cls, metadata):
+        Table(
+            "container_types_test",
+            metadata,
+            Column("id", Integer),
+            sa.PrimaryKeyConstraint("id"),
+            schema=None,
+            test_needs_fk=True,
+        )
+
+    def test_ARRAY_bind_variable(self, connection):
+        table = self.tables.container_types_test
+
+        connection.execute(sa.insert(table).values([{"id": 1}, {"id": 2}, {"id": 3}]))
+
+        stmt = select(table.c.id).where(table.c.id.in_(sa.bindparam("id", type_=sa.ARRAY(sa.Integer))))
+
+        eq_(connection.execute(stmt, {"id": [1, 2]}).fetchall(), [(1,), (2,)])
+
+    def test_list_type_bind_variable(self, connection):
+        table = self.tables.container_types_test
+
+        connection.execute(sa.insert(table).values([{"id": 1}, {"id": 2}, {"id": 3}]))
+
+        stmt = select(table.c.id).where(table.c.id.in_(sa.bindparam("id", type_=ydb_sa_types.ListType(sa.Integer))))
+
+        eq_(connection.execute(stmt, {"id": [1, 2]}).fetchall(), [(1,), (2,)])
+
+    def test_struct_type_bind_variable(self, connection):
+        table = self.tables.container_types_test
+
+        connection.execute(sa.insert(table).values([{"id": 1}, {"id": 2}, {"id": 3}]))
+
+        stmt = select(table.c.id).where(
+            table.c.id
+            == sa.text(":struct.id").bindparams(
+                sa.bindparam("struct", type_=ydb_sa_types.StructType({"id": sa.Integer})),
+            )
+        )
+
+        eq_(connection.scalar(stmt, {"struct": {"id": 1}}), 1)
+
+    def test_from_as_table(self, connection):
+        table = self.tables.container_types_test
+
+        connection.execute(
+            sa.insert(table).from_select(
+                ["id"],
+                sa.select(sa.column("id")).select_from(
+                    sa.func.as_table(
+                        sa.bindparam(
+                            "data",
+                            value=[{"id": 1}, {"id": 2}, {"id": 3}],
+                            type_=ydb_sa_types.ListType(ydb_sa_types.StructType({"id": sa.Integer})),
+                        )
+                    )
+                ),
+            )
+        )
+
+        eq_(connection.execute(sa.select(table)).fetchall(), [(1,), (2,), (3,)])
 
 
 @pytest.mark.skip("uuid unsupported for columns")

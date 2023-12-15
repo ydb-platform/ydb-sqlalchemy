@@ -1,10 +1,8 @@
-import datetime
+import dataclasses
 import itertools
 import logging
-import uuid
-import decimal
-import string
-from typing import Optional, Dict, Any
+
+from typing import Any, Mapping, Optional, Sequence, Union, Dict
 
 import ydb
 from .errors import (
@@ -21,75 +19,17 @@ from .errors import (
 logger = logging.getLogger(__name__)
 
 
-identifier_starts = {x for x in itertools.chain(string.ascii_letters, "_")}
-valid_identifier_chars = {x for x in itertools.chain(identifier_starts, string.digits)}
-
-
-def check_identifier_valid(idt: str) -> bool:
-    valid = idt and idt[0] in identifier_starts and all(c in valid_identifier_chars for c in idt)
-    if not valid:
-        raise ProgrammingError(f"Invalid identifier {idt}")
-    return valid
-
-
 def get_column_type(type_obj: Any) -> str:
     return str(ydb.convert.type_to_native(type_obj))
 
 
-def _generate_type_str(value: Any) -> str:
-    tvalue = type(value)
-
-    stype = {
-        bool: "Bool",
-        bytes: "String",
-        str: "Utf8",
-        int: "Int64",
-        float: "Double",
-        decimal.Decimal: "Decimal(22, 9)",
-        datetime.date: "Date",
-        datetime.datetime: "Timestamp",
-        datetime.timedelta: "Interval",
-        uuid.UUID: "Uuid",
-    }.get(tvalue)
-
-    if tvalue == dict:
-        types_lst = ", ".join(f"{k}: {_generate_type_str(v)}" for k, v in value.items())
-        stype = f"Struct<{types_lst}>"
-
-    elif tvalue == tuple:
-        types_lst = ", ".join(_generate_type_str(x) for x in value)
-        stype = f"Tuple<{types_lst}>"
-
-    elif tvalue == list:
-        nested_type = _generate_type_str(value[0])
-        stype = f"List<{nested_type}>"
-
-    elif tvalue == set:
-        nested_type = _generate_type_str(next(iter(value)))
-        stype = f"Set<{nested_type}>"
-
-    if stype is None:
-        raise ProgrammingError(f"Cannot translate value {value} (type {tvalue}) to ydb type.")
-
-    return stype
-
-
-def _generate_declare_stms(params: Dict[str, Any]) -> str:
-    return "".join(f"DECLARE {k} AS {_generate_type_str(t)}; " for k, t in params.items())
-
-
-def _generate_full_stm(sql: str, params: Optional[Dict[str, Any]] = None) -> (str, Optional[Dict[str, Any]]):
-    sql_params = None
-
-    if params:
-        for name in params.keys():
-            check_identifier_valid(name)
-        sql = sql % {k: f"${k}" if v is not None else "NULL" for k, v in params.items()}
-        sql_params = {f"${k}": v for k, v in params.items() if v is not None}
-        declare_stms = _generate_declare_stms(sql_params)
-        sql = f"{declare_stms}{sql}"
-
-    return sql.replace("%%", "%"), sql_params
+@dataclasses.dataclass
+class YdbQuery:
+    yql_text: str
+    parameters_types: Dict[str, Union[ydb.PrimitiveType, ydb.AbstractTypeBuilder]] = dataclasses.field(
+        default_factory=dict
+    )
+    is_ddl: bool = False
 
 
 class Cursor(object):
@@ -100,19 +40,28 @@ class Cursor(object):
         self.rows = None
         self._rows_prefetched = None
 
-    def execute(self, sql, parameters=None, context=None):
+    def execute(self, operation: YdbQuery, parameters: Optional[Mapping[str, Any]] = None):
         self.description = None
 
-        sql, sql_params = _generate_full_stm(sql, parameters)
-        logger.info("execute sql: %s, params: %s", sql, sql_params)
+        if operation.is_ddl or not operation.parameters_types:
+            query = operation.yql_text
+            is_ddl = operation.is_ddl
+        else:
+            query = ydb.DataQuery(operation.yql_text, operation.parameters_types)
+            is_ddl = operation.is_ddl
 
-        def _execute_in_pool(cli):
+        logger.info("execute sql: %s, params: %s", query, parameters)
+
+        def _execute_in_pool(cli: ydb.Session):
             try:
-                if context and context.get("isddl"):
-                    return cli.execute_scheme(sql)
-                else:
-                    prepared_query = cli.prepare(sql)
-                    return cli.transaction().execute(prepared_query, sql_params, commit_tx=True)
+                if is_ddl:
+                    return cli.execute_scheme(query)
+
+                prepared_query = query
+                if isinstance(query, str) and parameters:
+                    prepared_query = cli.prepare(query)
+
+                return cli.transaction().execute(prepared_query, parameters, commit_tx=True)
             except (ydb.issues.AlreadyExists, ydb.issues.PreconditionFailed) as e:
                 raise IntegrityError(e.message, e.issues, e.status) from e
             except (ydb.issues.Unsupported, ydb.issues.Unimplemented) as e:
@@ -182,9 +131,9 @@ class Cursor(object):
             self.rows = iter(self._rows_prefetched)
         return self._rows_prefetched
 
-    def executemany(self, sql, seq_of_parameters):
+    def executemany(self, operation: YdbQuery, seq_of_parameters: Optional[Sequence[Mapping[str, Any]]]):
         for parameters in seq_of_parameters:
-            self.execute(sql, parameters)
+            self.execute(operation, parameters)
 
     def executescript(self, script):
         return self.execute(script)
