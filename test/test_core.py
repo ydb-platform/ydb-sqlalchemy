@@ -231,7 +231,7 @@ class TestWithClause(TablesTest):
     )
     def test_auto_partitioning_by_size(self, connection, auto_partitioning_by_size, res, metadata):
         desc = self._create_table_and_get_desc(
-            connection, metadata, yql_auto_partitioning_by_size=auto_partitioning_by_size
+            connection, metadata, ydb_auto_partitioning_by_size=auto_partitioning_by_size
         )
         assert desc.partitioning_settings.partitioning_by_size == res
 
@@ -247,7 +247,7 @@ class TestWithClause(TablesTest):
         desc = self._create_table_and_get_desc(
             connection,
             metadata,
-            yql_auto_partitioning_by_load=auto_partitioning_by_load,
+            ydb_auto_partitioning_by_load=auto_partitioning_by_load,
         )
         assert desc.partitioning_settings.partitioning_by_load == res
 
@@ -262,7 +262,7 @@ class TestWithClause(TablesTest):
         desc = self._create_table_and_get_desc(
             connection,
             metadata,
-            yql_auto_partitioning_partition_size_mb=auto_partitioning_partition_size_mb,
+            ydb_auto_partitioning_partition_size_mb=auto_partitioning_partition_size_mb,
         )
         assert desc.partitioning_settings.partition_size_mb == res
 
@@ -283,7 +283,7 @@ class TestWithClause(TablesTest):
         desc = self._create_table_and_get_desc(
             connection,
             metadata,
-            yql_auto_partitioning_min_partitions_count=auto_partitioning_min_partitions_count,
+            ydb_auto_partitioning_min_partitions_count=auto_partitioning_min_partitions_count,
         )
         assert desc.partitioning_settings.min_partitions_count == res
 
@@ -304,7 +304,7 @@ class TestWithClause(TablesTest):
         desc = self._create_table_and_get_desc(
             connection,
             metadata,
-            yql_auto_partitioning_max_partitions_count=auto_partitioning_max_partitions_count,
+            ydb_auto_partitioning_max_partitions_count=auto_partitioning_max_partitions_count,
         )
         assert desc.partitioning_settings.max_partitions_count == res
 
@@ -325,7 +325,7 @@ class TestWithClause(TablesTest):
         desc = self._create_table_and_get_desc(
             connection,
             metadata,
-            yql_uniform_partitions=uniform_partitions,
+            ydb_uniform_partitions=uniform_partitions,
         )
         # it not only do the initiation partition but also set up the minimum partition count
         assert desc.partitioning_settings.min_partitions_count == res
@@ -347,6 +347,6 @@ class TestWithClause(TablesTest):
         desc = self._create_table_and_get_desc(
             connection,
             metadata,
-            yql_partition_at_keys=partition_at_keys,
+            ydb_partition_at_keys=partition_at_keys,
         )
         assert desc.partitioning_settings.min_partitions_count == res
