@@ -1,11 +1,14 @@
 from decimal import Decimal
+from datetime import date, datetime
 
+import pytest
 import sqlalchemy as sa
 from sqlalchemy import Table, Column, Integer, Unicode
-
 from sqlalchemy.testing.fixtures import TestBase, TablesTest
 
-from datetime import date, datetime
+import ydb
+
+from ydb_sqlalchemy.sqlalchemy import types
 
 from ydb_sqlalchemy import sqlalchemy as ydb_sa
 
@@ -202,6 +205,134 @@ class TestTypes(TablesTest):
 
         row = connection.execute(sa.select(tb)).fetchone()
         assert row == (1, "Hello World!", 3.5, True, now, today)
+
+
+class TestWithClause(TablesTest):
+    run_create_tables = "each"
+
+    @staticmethod
+    def _create_table_and_get_desc(connection, metadata, **kwargs):
+        table = Table(
+            "clause_with_test",
+            metadata,
+            Column("id", types.UInt32, primary_key=True),
+            **kwargs,
+        )
+        table.create(connection)
+
+        session: ydb.Session = connection.connection.driver_connection.pool.acquire()
+        return session.describe_table("/local/" + table.name)
+
+    @pytest.mark.parametrize("auto_partitioning_by_size,res", [
+        (None, 1),
+        (True, 1),
+        (False, 2),
+    ])
+    def test_auto_partitioning_by_size(self, connection, auto_partitioning_by_size, res, metadata):
+        desc = self._create_table_and_get_desc(
+            connection,
+            metadata,
+            yql_auto_partitioning_by_size=auto_partitioning_by_size
+        )
+        assert desc.partitioning_settings.partitioning_by_size == res
+
+    @pytest.mark.parametrize("auto_partitioning_by_load,res", [
+        (None, 2),
+        (True, 1),
+        (False, 2),
+    ])
+    def test_auto_partitioning_by_load(self, connection, auto_partitioning_by_load, res, metadata):
+        desc = self._create_table_and_get_desc(
+            connection,
+            metadata,
+            yql_auto_partitioning_by_load=auto_partitioning_by_load,
+        )
+        assert desc.partitioning_settings.partitioning_by_load == res
+
+    @pytest.mark.parametrize("auto_partitioning_partition_size_mb,res", [
+        (None, 2048),
+        (2000, 2000),
+    ])
+    def test_auto_partitioning_partition_size_mb(self, connection, auto_partitioning_partition_size_mb, res, metadata):
+        desc = self._create_table_and_get_desc(
+            connection,
+            metadata,
+            yql_auto_partitioning_partition_size_mb=auto_partitioning_partition_size_mb,
+        )
+        assert desc.partitioning_settings.partition_size_mb == res
+
+    @pytest.mark.parametrize("auto_partitioning_min_partitions_count,res", [
+        (None, 1),
+        (10, 10),
+    ])
+    def test_auto_partitioning_min_partitions_count(
+        self,
+        connection,
+        auto_partitioning_min_partitions_count,
+        res,
+        metadata,
+    ):
+        desc = self._create_table_and_get_desc(
+            connection,
+            metadata,
+            yql_auto_partitioning_min_partitions_count=auto_partitioning_min_partitions_count,
+        )
+        assert desc.partitioning_settings.min_partitions_count == res
+
+    @pytest.mark.parametrize("auto_partitioning_max_partitions_count,res", [
+        (None, 0),
+        (10, 10),
+    ])
+    def test_auto_partitioning_max_partitions_count(
+        self,
+        connection,
+        auto_partitioning_max_partitions_count,
+        res,
+        metadata,
+    ):
+        desc = self._create_table_and_get_desc(
+            connection,
+            metadata,
+            yql_auto_partitioning_max_partitions_count=auto_partitioning_max_partitions_count,
+        )
+        assert desc.partitioning_settings.max_partitions_count == res
+
+    @pytest.mark.parametrize("uniform_partitions,res", [
+        (None, 1),
+        (10, 10),
+    ])
+    def test_uniform_partitions(
+        self,
+        connection,
+        uniform_partitions,
+        res,
+        metadata,
+    ):
+        desc = self._create_table_and_get_desc(
+            connection,
+            metadata,
+            yql_uniform_partitions=uniform_partitions,
+        )
+        # it not only do the initiation partition but also set up the minimum partition count
+        assert desc.partitioning_settings.min_partitions_count == res
+
+    @pytest.mark.parametrize("partition_at_keys,res", [
+        (None, 1),
+        ((100, 1000), 3),
+    ])
+    def test_partition_at_keys(
+        self,
+        connection,
+        partition_at_keys,
+        res,
+        metadata,
+    ):
+        desc = self._create_table_and_get_desc(
+            connection,
+            metadata,
+            yql_partition_at_keys=partition_at_keys,
+        )
+        assert desc.partitioning_settings.min_partitions_count == res
 
 
 class TestUpsert(TablesTest):

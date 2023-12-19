@@ -347,7 +347,35 @@ class YqlCompiler(StrSQLCompiler):
 
 
 class YqlDDLCompiler(DDLCompiler):
-    pass
+    def post_create_table(self, table):
+        yql_opts = table.dialect_options["yql"]
+        with_content = []
+        if yql_opts["auto_partitioning_by_size"] is not None:
+            auto_partitioning_by_size = "ENABLED" if yql_opts["auto_partitioning_by_size"] else "DISABLED"
+            with_content.append(f"AUTO_PARTITIONING_BY_SIZE = {auto_partitioning_by_size}")
+        if yql_opts["auto_partitioning_by_load"] is not None:
+            auto_partitioning_by_load = "ENABLED" if yql_opts["auto_partitioning_by_load"] else "DISABLED"
+            with_content.append(f"AUTO_PARTITIONING_BY_LOAD = {auto_partitioning_by_load}")
+        if yql_opts["auto_partitioning_partition_size_mb"] is not None:
+            with_content.append(
+                f"AUTO_PARTITIONING_PARTITION_SIZE_MB = {yql_opts['auto_partitioning_partition_size_mb']}"
+            )
+        if yql_opts["auto_partitioning_min_partitions_count"] is not None:
+            with_content.append(
+                f"AUTO_PARTITIONING_MIN_PARTITIONS_COUNT = {yql_opts['auto_partitioning_min_partitions_count']}"
+            )
+        if yql_opts["auto_partitioning_max_partitions_count"] is not None:
+            with_content.append(
+                f"AUTO_PARTITIONING_MAX_PARTITIONS_COUNT = {yql_opts['auto_partitioning_max_partitions_count']}"
+            )
+        if yql_opts["uniform_partitions"] is not None:
+            with_content.append(f"UNIFORM_PARTITIONS = {yql_opts['uniform_partitions']}")
+        if yql_opts["partition_at_keys"] is not None:
+            with_content.append(f"PARTITION_AT_KEYS = {yql_opts['partition_at_keys']}")
+        if with_content:
+            with_content = ",\n".join(with_content)
+            return f"\nWITH (\n\t{with_content}\n)"
+        return ""
 
 
 def upsert(table):
@@ -428,6 +456,21 @@ class YqlDialect(StrCompileDialect):
     statement_compiler = YqlCompiler
     ddl_compiler = YqlDDLCompiler
     type_compiler = YqlTypeCompiler
+
+    construct_arguments = [
+        (
+            sa.schema.Table,
+            {
+                "auto_partitioning_by_size": None,
+                "auto_partitioning_by_load": None,
+                "auto_partitioning_partition_size_mb": None,
+                "auto_partitioning_min_partitions_count": None,
+                "auto_partitioning_max_partitions_count": None,
+                "uniform_partitions": None,
+                "partition_at_keys": None,
+            },
+        ),
+    ]
 
     @classmethod
     def import_dbapi(cls: Any):
