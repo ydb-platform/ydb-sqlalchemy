@@ -223,24 +223,28 @@ class TestWithClause(TablesTest):
         session: ydb.Session = connection.connection.driver_connection.pool.acquire()
         return session.describe_table("/local/" + table.name)
 
-    @pytest.mark.parametrize("auto_partitioning_by_size,res", [
-        (None, 1),
-        (True, 1),
-        (False, 2),
-    ])
+    @pytest.mark.parametrize(
+        "auto_partitioning_by_size,res",
+        [
+            (None, 1),
+            (True, 1),
+            (False, 2),
+        ],
+    )
     def test_auto_partitioning_by_size(self, connection, auto_partitioning_by_size, res, metadata):
         desc = self._create_table_and_get_desc(
-            connection,
-            metadata,
-            yql_auto_partitioning_by_size=auto_partitioning_by_size
+            connection, metadata, yql_auto_partitioning_by_size=auto_partitioning_by_size
         )
         assert desc.partitioning_settings.partitioning_by_size == res
 
-    @pytest.mark.parametrize("auto_partitioning_by_load,res", [
-        (None, 2),
-        (True, 1),
-        (False, 2),
-    ])
+    @pytest.mark.parametrize(
+        "auto_partitioning_by_load,res",
+        [
+            (None, 2),
+            (True, 1),
+            (False, 2),
+        ],
+    )
     def test_auto_partitioning_by_load(self, connection, auto_partitioning_by_load, res, metadata):
         desc = self._create_table_and_get_desc(
             connection,
@@ -249,10 +253,13 @@ class TestWithClause(TablesTest):
         )
         assert desc.partitioning_settings.partitioning_by_load == res
 
-    @pytest.mark.parametrize("auto_partitioning_partition_size_mb,res", [
-        (None, 2048),
-        (2000, 2000),
-    ])
+    @pytest.mark.parametrize(
+        "auto_partitioning_partition_size_mb,res",
+        [
+            (None, 2048),
+            (2000, 2000),
+        ],
+    )
     def test_auto_partitioning_partition_size_mb(self, connection, auto_partitioning_partition_size_mb, res, metadata):
         desc = self._create_table_and_get_desc(
             connection,
@@ -261,10 +268,13 @@ class TestWithClause(TablesTest):
         )
         assert desc.partitioning_settings.partition_size_mb == res
 
-    @pytest.mark.parametrize("auto_partitioning_min_partitions_count,res", [
-        (None, 1),
-        (10, 10),
-    ])
+    @pytest.mark.parametrize(
+        "auto_partitioning_min_partitions_count,res",
+        [
+            (None, 1),
+            (10, 10),
+        ],
+    )
     def test_auto_partitioning_min_partitions_count(
         self,
         connection,
@@ -279,10 +289,13 @@ class TestWithClause(TablesTest):
         )
         assert desc.partitioning_settings.min_partitions_count == res
 
-    @pytest.mark.parametrize("auto_partitioning_max_partitions_count,res", [
-        (None, 0),
-        (10, 10),
-    ])
+    @pytest.mark.parametrize(
+        "auto_partitioning_max_partitions_count,res",
+        [
+            (None, 0),
+            (10, 10),
+        ],
+    )
     def test_auto_partitioning_max_partitions_count(
         self,
         connection,
@@ -297,10 +310,13 @@ class TestWithClause(TablesTest):
         )
         assert desc.partitioning_settings.max_partitions_count == res
 
-    @pytest.mark.parametrize("uniform_partitions,res", [
-        (None, 1),
-        (10, 10),
-    ])
+    @pytest.mark.parametrize(
+        "uniform_partitions,res",
+        [
+            (None, 1),
+            (10, 10),
+        ],
+    )
     def test_uniform_partitions(
         self,
         connection,
@@ -316,10 +332,13 @@ class TestWithClause(TablesTest):
         # it not only do the initiation partition but also set up the minimum partition count
         assert desc.partitioning_settings.min_partitions_count == res
 
-    @pytest.mark.parametrize("partition_at_keys,res", [
-        (None, 1),
-        ((100, 1000), 3),
-    ])
+    @pytest.mark.parametrize(
+        "partition_at_keys,res",
+        [
+            (None, 1),
+            ((100, 1000), 3),
+        ],
+    )
     def test_partition_at_keys(
         self,
         connection,
