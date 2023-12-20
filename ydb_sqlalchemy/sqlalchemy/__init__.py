@@ -377,6 +377,7 @@ class YqlDDLCompiler(DDLCompiler):
             table_partitioning_settings.append(f"PARTITION_AT_KEYS = {ydb_opts['partition_at_keys']}")
         return table_partitioning_settings
 
+
 def upsert(table):
     return sa.sql.Insert(table)
 

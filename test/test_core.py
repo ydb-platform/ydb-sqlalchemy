@@ -364,4 +364,3 @@ class TestWithClause(TablesTest):
         assert desc.partitioning_settings.partitioning_by_load == 1
         assert desc.partitioning_settings.min_partitions_count == 3
         assert desc.partitioning_settings.max_partitions_count == 5
-
