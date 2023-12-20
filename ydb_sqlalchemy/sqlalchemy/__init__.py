@@ -347,36 +347,39 @@ class YqlCompiler(StrSQLCompiler):
 
 
 class YqlDDLCompiler(DDLCompiler):
-    def post_create_table(self, table):
+    def post_create_table(self, table: sa.Table) -> str:
         ydb_opts = table.dialect_options["ydb"]
-        with_content = []
+        with_clause_list = self._render_table_partitioning_settings(ydb_opts)
+        if with_clause_list:
+            with_clause_text = ",\n".join(with_clause_list)
+            return f"\nWITH (\n\t{with_clause_text}\n)"
+        return ""
+
+    def _render_table_partitioning_settings(self, ydb_opts: Dict[str, Any]) -> List[str]:
+        table_partitioning_settings = []
         if ydb_opts["auto_partitioning_by_size"] is not None:
             auto_partitioning_by_size = "ENABLED" if ydb_opts["auto_partitioning_by_size"] else "DISABLED"
-            with_content.append(f"AUTO_PARTITIONING_BY_SIZE = {auto_partitioning_by_size}")
+            table_partitioning_settings.append(f"AUTO_PARTITIONING_BY_SIZE = {auto_partitioning_by_size}")
         if ydb_opts["auto_partitioning_by_load"] is not None:
             auto_partitioning_by_load = "ENABLED" if ydb_opts["auto_partitioning_by_load"] else "DISABLED"
-            with_content.append(f"AUTO_PARTITIONING_BY_LOAD = {auto_partitioning_by_load}")
+            table_partitioning_settings.append(f"AUTO_PARTITIONING_BY_LOAD = {auto_partitioning_by_load}")
         if ydb_opts["auto_partitioning_partition_size_mb"] is not None:
-            with_content.append(
+            table_partitioning_settings.append(
                 f"AUTO_PARTITIONING_PARTITION_SIZE_MB = {ydb_opts['auto_partitioning_partition_size_mb']}"
             )
         if ydb_opts["auto_partitioning_min_partitions_count"] is not None:
-            with_content.append(
+            table_partitioning_settings.append(
                 f"AUTO_PARTITIONING_MIN_PARTITIONS_COUNT = {ydb_opts['auto_partitioning_min_partitions_count']}"
             )
         if ydb_opts["auto_partitioning_max_partitions_count"] is not None:
-            with_content.append(
+            table_partitioning_settings.append(
                 f"AUTO_PARTITIONING_MAX_PARTITIONS_COUNT = {ydb_opts['auto_partitioning_max_partitions_count']}"
             )
         if ydb_opts["uniform_partitions"] is not None:
-            with_content.append(f"UNIFORM_PARTITIONS = {ydb_opts['uniform_partitions']}")
+            table_partitioning_settings.append(f"UNIFORM_PARTITIONS = {ydb_opts['uniform_partitions']}")
         if ydb_opts["partition_at_keys"] is not None:
-            with_content.append(f"PARTITION_AT_KEYS = {ydb_opts['partition_at_keys']}")
-        if with_content:
-            with_content = ",\n".join(with_content)
-            return f"\nWITH (\n\t{with_content}\n)"
-        return ""
-
+            table_partitioning_settings.append(f"PARTITION_AT_KEYS = {ydb_opts['partition_at_keys']}")
+        return table_partitioning_settings
 
 def upsert(table):
     return Upsert(table)

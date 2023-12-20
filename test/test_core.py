@@ -353,6 +353,20 @@ class TestWithClause(TablesTest):
         )
         assert desc.partitioning_settings.min_partitions_count == res
 
+    def test_several_keys(self, connection, metadata):
+        desc = self._create_table_and_get_desc(
+            connection,
+            metadata,
+            ydb_auto_partitioning_by_size=True,
+            ydb_auto_partitioning_by_load=True,
+            ydb_auto_partitioning_min_partitions_count=3,
+            ydb_auto_partitioning_max_partitions_count=5,
+        )
+        assert desc.partitioning_settings.partitioning_by_size == 1
+        assert desc.partitioning_settings.partitioning_by_load == 1
+        assert desc.partitioning_settings.min_partitions_count == 3
+        assert desc.partitioning_settings.max_partitions_count == 5
+
 
 class TestUpsert(TablesTest):
     @classmethod
