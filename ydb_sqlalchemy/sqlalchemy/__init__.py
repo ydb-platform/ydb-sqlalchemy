@@ -6,6 +6,7 @@ import collections
 import ydb
 import ydb_sqlalchemy.dbapi as dbapi
 from ydb_sqlalchemy.dbapi.constants import YDB_KEYWORDS
+from ydb_sqlalchemy.sqlalchemy.dml import Upsert
 
 import sqlalchemy as sa
 from sqlalchemy.exc import CompileError, NoSuchTableError
@@ -347,7 +348,8 @@ class YqlDDLCompiler(DDLCompiler):
 
 
 def upsert(table):
-    return sa.sql.Insert(table)
+    # return sa.sql.Insert(table)
+    return Upsert(table)
 
 
 COLUMN_TYPES = {

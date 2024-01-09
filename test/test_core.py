@@ -7,6 +7,8 @@ from sqlalchemy.testing.fixtures import TestBase, TablesTest
 
 from datetime import date, datetime
 
+from ydb_sqlalchemy import sqlalchemy as ydb_sa
+
 
 def clear_sql(stm):
     return stm.replace("\n", " ").replace("  ", " ").strip()
@@ -200,3 +202,31 @@ class TestTypes(TablesTest):
 
         row = connection.execute(sa.select(tb)).fetchone()
         assert row == (1, "Hello World!", 3.5, True, now, today)
+
+
+class TestUpsert(TablesTest):
+    @classmethod
+    def define_tables(cls, metadata):
+        Table(
+            "test_upsert",
+            metadata,
+            Column("id", Integer, primary_key=True),
+            Column("val", Integer),
+        )
+
+    def test_1(self, connection):
+        tb = self.tables.test_upsert
+
+        stm = ydb_sa.upsert(tb).values(id=5, val=5)
+
+        # TODO: allow to get string
+        # assert "UPSERT INTO" in str(stm)
+
+        connection.execute(stm)
+        row = connection.execute(sa.select(tb)).fetchone()
+        assert row == (5, 5)
+
+        stm = ydb_sa.upsert(tb).values(id=5, val=6)
+        connection.execute(stm)
+        row = connection.execute(sa.select(tb)).fetchone()
+        assert row == (5, 6)
