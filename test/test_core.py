@@ -370,6 +370,7 @@ class TestWithClause(TablesTest):
         assert desc.partitioning_settings.min_partitions_count == 3
         assert desc.partitioning_settings.max_partitions_count == 5
 
+
 class TestUpsert(TablesTest):
     @classmethod
     def define_tables(cls, metadata):
