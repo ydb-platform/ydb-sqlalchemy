@@ -7,6 +7,7 @@ from sqlalchemy import Table, Column, Integer, Unicode
 from sqlalchemy.testing.fixtures import TestBase, TablesTest
 
 import ydb
+from ydb._grpc.v4.protos import ydb_common_pb2
 
 from ydb_sqlalchemy.sqlalchemy import types
 
@@ -219,14 +220,16 @@ class TestWithClause(TablesTest):
         table.create(connection)
 
         session: ydb.Session = connection.connection.driver_connection.pool.acquire()
-        return session.describe_table("/local/" + table.name)
+        table_description = session.describe_table("/local/" + table.name)
+        session.delete()
+        return table_description
 
     @pytest.mark.parametrize(
         "auto_partitioning_by_size,res",
         [
-            (None, 1),
-            (True, 1),
-            (False, 2),
+            (None, ydb_common_pb2.FeatureFlag.Status.ENABLED),
+            (True, ydb_common_pb2.FeatureFlag.Status.ENABLED),
+            (False, ydb_common_pb2.FeatureFlag.Status.DISABLED),
         ],
     )
     def test_auto_partitioning_by_size(self, connection, auto_partitioning_by_size, res, metadata):
@@ -238,9 +241,9 @@ class TestWithClause(TablesTest):
     @pytest.mark.parametrize(
         "auto_partitioning_by_load,res",
         [
-            (None, 2),
-            (True, 1),
-            (False, 2),
+            (None, ydb_common_pb2.FeatureFlag.Status.DISABLED),
+            (True, ydb_common_pb2.FeatureFlag.Status.ENABLED),
+            (False, ydb_common_pb2.FeatureFlag.Status.DISABLED),
         ],
     )
     def test_auto_partitioning_by_load(self, connection, auto_partitioning_by_load, res, metadata):
