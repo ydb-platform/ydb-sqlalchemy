@@ -214,19 +214,37 @@ class TestUpsert(TablesTest):
             Column("val", Integer),
         )
 
-    def test_1(self, connection):
+    def test_string(self, connection):
         tb = self.tables.test_upsert
 
         stm = ydb_sa.upsert(tb).values(id=5, val=5)
 
-        # TODO: allow to get string
-        # assert "UPSERT INTO" in str(stm)
+        assert "UPSERT INTO" in str(stm)
+
+    def test_upsert_new_id(self, connection):
+        tb = self.tables.test_upsert
+
+        stm = ydb_sa.upsert(tb).values(id=1, val=1)
 
         connection.execute(stm)
-        row = connection.execute(sa.select(tb)).fetchone()
-        assert row == (5, 5)
+        row = connection.execute(sa.select(tb)).fetchall()
+        assert row == [(1, 1)]
+
+        stm = ydb_sa.upsert(tb).values(id=2, val=2)
+        connection.execute(stm)
+        row = connection.execute(sa.select(tb)).fetchall()
+        assert row == [(1, 1), (2, 2)]
+
+    def test_upsert_existing_id(self, connection):
+        tb = self.tables.test_upsert
+
+        stm = ydb_sa.upsert(tb).values(id=5, val=5)
+
+        connection.execute(stm)
+        row = connection.execute(sa.select(tb)).fetchall()
+        assert row == [(5, 5)]
 
         stm = ydb_sa.upsert(tb).values(id=5, val=6)
         connection.execute(stm)
-        row = connection.execute(sa.select(tb)).fetchone()
-        assert row == (5, 6)
+        row = connection.execute(sa.select(tb)).fetchall()
+        assert row == [(5, 6)]

@@ -342,13 +342,15 @@ class YqlCompiler(StrSQLCompiler):
 
         return parameter_types
 
+    def visit_upsert(self, insert_stmt, visited_bindparam=None, **kw):
+        return self.visit_insert(insert_stmt, visited_bindparam, **kw).replace("INSERT", "UPSERT")
+
 
 class YqlDDLCompiler(DDLCompiler):
     pass
 
 
 def upsert(table):
-    # return sa.sql.Insert(table)
     return Upsert(table)
 
 
