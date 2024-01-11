@@ -21,7 +21,7 @@ setuptools.setup(
     license="Apache 2.0",
     package_dir={"": "."},
     long_description=long_description,
-    long_description_content_type='text/markdown',
+    long_description_content_type="text/markdown",
     packages=setuptools.find_packages("."),
     classifiers=[
         "Programming Language :: Python",
@@ -32,11 +32,14 @@ setuptools.setup(
     install_requires=requirements,  # requirements.txt
     options={"bdist_wheel": {"universal": True}},
     extras_require={
-        "yc": ["yandexcloud", ],
+        "yc": [
+            "yandexcloud",
+        ],
     },
     entry_points={
         "sqlalchemy.dialects": [
             "yql.ydb=ydb_sqlalchemy.sqlalchemy:YqlDialect",
+            "ydb=ydb_sqlalchemy.sqlalchemy:YqlDialect",
         ]
     },
 )
