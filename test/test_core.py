@@ -221,9 +221,8 @@ class TestWithClause(TablesTest):
         )
         table.create(connection)
 
-        session: ydb.Session = connection.connection.driver_connection.pool.acquire()
+        session: ydb.Session = connection.connection.driver_connection.session
         table_description = session.describe_table("/local/" + table.name)
-        session.delete()
         return table_description
 
     @pytest.mark.parametrize(
