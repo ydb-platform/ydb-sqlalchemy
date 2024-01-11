@@ -3,7 +3,7 @@ from datetime import date, datetime
 
 import pytest
 import sqlalchemy as sa
-from sqlalchemy import Table, Column, Integer, Unicode
+from sqlalchemy import Table, Column, Integer, Unicode, String
 from sqlalchemy.testing.fixtures import TestBase, TablesTest
 
 import ydb
@@ -383,35 +383,122 @@ class TestUpsert(TablesTest):
 
     def test_string(self, connection):
         tb = self.tables.test_upsert
+        stm = ydb_sa.upsert(tb).values(id=0, val=5)
 
-        stm = ydb_sa.upsert(tb).values(id=5, val=5)
-
-        assert "UPSERT INTO" in str(stm)
+        assert str(stm) == "UPSERT INTO test_upsert (id, val) VALUES (?, ?)"
 
     def test_upsert_new_id(self, connection):
         tb = self.tables.test_upsert
-
-        stm = ydb_sa.upsert(tb).values(id=1, val=1)
-
+        stm = ydb_sa.upsert(tb).values(id=0, val=1)
         connection.execute(stm)
         row = connection.execute(sa.select(tb)).fetchall()
-        assert row == [(1, 1)]
+        assert row == [(0, 1)]
 
-        stm = ydb_sa.upsert(tb).values(id=2, val=2)
+        stm = ydb_sa.upsert(tb).values(id=1, val=2)
         connection.execute(stm)
         row = connection.execute(sa.select(tb)).fetchall()
-        assert row == [(1, 1), (2, 2)]
+        assert row == [(0, 1), (1, 2)]
 
     def test_upsert_existing_id(self, connection):
         tb = self.tables.test_upsert
-
-        stm = ydb_sa.upsert(tb).values(id=5, val=5)
-
+        stm = ydb_sa.upsert(tb).values(id=0, val=5)
         connection.execute(stm)
         row = connection.execute(sa.select(tb)).fetchall()
-        assert row == [(5, 5)]
 
-        stm = ydb_sa.upsert(tb).values(id=5, val=6)
+        assert row == [(0, 5)]
+
+        stm = ydb_sa.upsert(tb).values(id=0, val=6)
         connection.execute(stm)
         row = connection.execute(sa.select(tb)).fetchall()
-        assert row == [(5, 6)]
+
+        assert row == [(0, 6)]
+
+    def test_upsert_several_diff_id(self, connection):
+        tb = self.tables.test_upsert
+        stm = ydb_sa.upsert(tb).values(
+            [
+                {"id": 0, "val": 4},
+                {"id": 1, "val": 5},
+                {"id": 2, "val": 6},
+            ]
+        )
+        connection.execute(stm)
+        row = connection.execute(sa.select(tb)).fetchall()
+
+        assert row == [(0, 4), (1, 5), (2, 6)]
+
+    def test_upsert_several_same_id(self, connection):
+        tb = self.tables.test_upsert
+        stm = ydb_sa.upsert(tb).values(
+            [
+                {"id": 0, "val": 4},
+                {"id": 0, "val": 5},
+                {"id": 0, "val": 6},
+            ]
+        )
+        connection.execute(stm)
+        row = connection.execute(sa.select(tb)).fetchall()
+
+        assert row == [(0, 6)]
+
+    def test_upsert_from_select(self, connection, metadata):
+        table_to_select_from = Table(
+            "table_to_select_from",
+            metadata,
+            Column("id", Integer, primary_key=True),
+            Column("val", Integer),
+        )
+        table_to_select_from.create(connection)
+        stm = sa.insert(table_to_select_from).values(
+            [
+                {"id": 100, "val": 0},
+                {"id": 110, "val": 1},
+                {"id": 120, "val": 2},
+                {"id": 130, "val": 3},
+            ]
+        )
+        connection.execute(stm)
+
+        tb = self.tables.test_upsert
+        select_stm = sa.select(table_to_select_from.c.id, table_to_select_from.c.val).where(
+            table_to_select_from.c.id > 115,
+        )
+        upsert_stm = ydb_sa.upsert(tb).from_select(["id", "val"], select_stm)
+        connection.execute(upsert_stm)
+        row = connection.execute(sa.select(tb)).fetchall()
+
+        assert row == [(120, 2), (130, 3)]
+
+
+class TestUpsertDoesNotReplaceInsert(TablesTest):
+    @classmethod
+    def define_tables(cls, metadata):
+        Table(
+            "test_upsert_does_not_replace_insert",
+            metadata,
+            Column("id", Integer, primary_key=True),
+            Column("VALUE_TO_INSERT", String),
+        )
+
+    def test_string(self, connection):
+        tb = self.tables.test_upsert_does_not_replace_insert
+
+        stm = ydb_sa.upsert(tb).values(id=0, VALUE_TO_INSERT="5")
+
+        assert str(stm) == "UPSERT INTO test_upsert_does_not_replace_insert (id, `VALUE_TO_INSERT`) VALUES (?, ?)"
+
+    def test_insert_in_name(self, connection):
+        tb = self.tables.test_upsert_does_not_replace_insert
+        stm = ydb_sa.upsert(tb).values(id=1, VALUE_TO_INSERT="5")
+        connection.execute(stm)
+        row = connection.execute(sa.select(tb).where(tb.c.id == 1)).fetchone()
+
+        assert row == (1, "5")
+
+    def test_insert_in_name_and_field(self, connection):
+        tb = self.tables.test_upsert_does_not_replace_insert
+        stm = ydb_sa.upsert(tb).values(id=2, VALUE_TO_INSERT="INSERT is my favourite operation")
+        connection.execute(stm)
+        row = connection.execute(sa.select(tb).where(tb.c.id == 2)).fetchone()
+
+        assert row == (2, "INSERT is my favourite operation")
