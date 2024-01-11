@@ -11,6 +11,8 @@ from ydb._grpc.v4.protos import ydb_common_pb2
 
 from ydb_sqlalchemy.sqlalchemy import types
 
+from ydb_sqlalchemy import dbapi, IsolationLevel
+
 
 def clear_sql(stm):
     return stm.replace("\n", " ").replace("  ", " ").strip()
@@ -367,3 +369,116 @@ class TestWithClause(TablesTest):
         assert desc.partitioning_settings.partitioning_by_load == 1
         assert desc.partitioning_settings.min_partitions_count == 3
         assert desc.partitioning_settings.max_partitions_count == 5
+
+
+class TestTransaction(TablesTest):
+    @classmethod
+    def define_tables(cls, metadata: sa.MetaData):
+        Table(
+            "test",
+            metadata,
+            Column("id", Integer, primary_key=True),
+        )
+
+    def test_rollback(self, connection_no_trans: sa.Connection, connection: sa.Connection):
+        table = self.tables.test
+
+        connection_no_trans.execution_options(isolation_level=IsolationLevel.SERIALIZABLE)
+        with connection_no_trans.begin():
+            stm1 = table.insert().values(id=1)
+            connection_no_trans.execute(stm1)
+            stm2 = table.insert().values(id=2)
+            connection_no_trans.execute(stm2)
+            connection_no_trans.rollback()
+
+        cursor = connection.execute(sa.select(table))
+        result = cursor.fetchall()
+        assert result == []
+
+    def test_commit(self, connection_no_trans: sa.Connection, connection: sa.Connection):
+        table = self.tables.test
+
+        connection_no_trans.execution_options(isolation_level=IsolationLevel.SERIALIZABLE)
+        with connection_no_trans.begin():
+            stm1 = table.insert().values(id=3)
+            connection_no_trans.execute(stm1)
+            stm2 = table.insert().values(id=4)
+            connection_no_trans.execute(stm2)
+
+        cursor = connection.execute(sa.select(table))
+        result = cursor.fetchall()
+        assert set(result) == {(3,), (4,)}
+
+    @pytest.mark.parametrize("isolation_level", (IsolationLevel.SERIALIZABLE, IsolationLevel.SNAPSHOT_READONLY))
+    def test_interactive_transaction(
+        self, connection_no_trans: sa.Connection, connection: sa.Connection, isolation_level
+    ):
+        table = self.tables.test
+        dbapi_connection: dbapi.Connection = connection_no_trans.connection.dbapi_connection
+
+        stm1 = table.insert().values([{"id": 5}, {"id": 6}])
+        connection.execute(stm1)
+
+        connection_no_trans.execution_options(isolation_level=isolation_level)
+        with connection_no_trans.begin():
+            tx_id = dbapi_connection.transaction.tx_id
+            assert tx_id is not None
+            cursor1 = connection_no_trans.execute(sa.select(table))
+            cursor2 = connection_no_trans.execute(sa.select(table))
+            assert dbapi_connection.transaction.tx_id == tx_id
+
+        assert set(cursor1.fetchall()) == {(5,), (6,)}
+        assert set(cursor2.fetchall()) == {(5,), (6,)}
+
+    @pytest.mark.parametrize(
+        "isolation_level",
+        (
+            IsolationLevel.ONLINE_READONLY,
+            IsolationLevel.ONLINE_READONLY_INCONSISTENT,
+            IsolationLevel.STALE_READONLY,
+            IsolationLevel.AUTOCOMMIT,
+        ),
+    )
+    def test_not_interactive_transaction(
+        self, connection_no_trans: sa.Connection, connection: sa.Connection, isolation_level
+    ):
+        table = self.tables.test
+        dbapi_connection: dbapi.Connection = connection_no_trans.connection.dbapi_connection
+
+        stm1 = table.insert().values([{"id": 7}, {"id": 8}])
+        connection.execute(stm1)
+
+        connection_no_trans.execution_options(isolation_level=isolation_level)
+        with connection_no_trans.begin():
+            assert dbapi_connection.transaction is None
+            cursor1 = connection_no_trans.execute(sa.select(table))
+            cursor2 = connection_no_trans.execute(sa.select(table))
+            assert dbapi_connection.transaction is None
+
+        assert set(cursor1.fetchall()) == {(7,), (8,)}
+        assert set(cursor2.fetchall()) == {(7,), (8,)}
+
+
+class TestTransactionIsolationLevel(TestBase):
+    YDB_ISOLATION_SETTINGS_MAP = {
+        IsolationLevel.AUTOCOMMIT: (ydb.SerializableReadWrite().name, False),
+        IsolationLevel.SERIALIZABLE: (ydb.SerializableReadWrite().name, True),
+        IsolationLevel.ONLINE_READONLY: (ydb.OnlineReadOnly().name, False),
+        IsolationLevel.ONLINE_READONLY_INCONSISTENT: (ydb.OnlineReadOnly().with_allow_inconsistent_reads().name, False),
+        IsolationLevel.STALE_READONLY: (ydb.StaleReadOnly().name, False),
+        IsolationLevel.SNAPSHOT_READONLY: (ydb.SnapshotReadOnly().name, True),
+    }
+
+    def test_connection_set(self, connection_no_trans: sa.Connection):
+        dbapi_connection: dbapi.Connection = connection_no_trans.connection.dbapi_connection
+
+        for sa_isolation_level, ydb_isolation_settings in self.YDB_ISOLATION_SETTINGS_MAP.items():
+            connection_no_trans.execution_options(isolation_level=sa_isolation_level)
+            with connection_no_trans.begin():
+                assert dbapi_connection.tx_mode.name == ydb_isolation_settings[0]
+                assert dbapi_connection.interactive_transaction is ydb_isolation_settings[1]
+                if dbapi_connection.interactive_transaction:
+                    assert dbapi_connection.transaction is not None
+                    assert dbapi_connection.transaction.tx_id is not None
+                else:
+                    assert dbapi_connection.transaction is None

@@ -1,4 +1,4 @@
-from .connection import Connection
+from .connection import Connection, IsolationLevel  # noqa: F401
 from .cursor import Cursor, YdbQuery  # noqa: F401
 from .errors import (
     Warning,
