@@ -6,7 +6,7 @@ import pytest
 import sqlalchemy as sa
 import ydb
 from sqlalchemy import Table, Column, Integer, Unicode
-from sqlalchemy.testing.fixtures import TestBase, TablesTest
+from sqlalchemy.testing.fixtures import TestBase, TablesTest, config
 from ydb._grpc.v4.protos import ydb_common_pb2
 
 from ydb_sqlalchemy import dbapi, IsolationLevel
@@ -220,8 +220,9 @@ class TestWithClause(TablesTest):
         )
         table.create(connection)
 
-        session: ydb.Session = connection.connection.driver_connection.session
+        session: ydb.Session = connection.connection.driver_connection.session_pool.acquire()
         table_description = session.describe_table("/local/" + table.name)
+        connection.connection.driver_connection.session_pool.release(session)
         return table_description
 
     @pytest.mark.parametrize(
@@ -419,11 +420,11 @@ class TestTransaction(TablesTest):
 
         connection_no_trans.execution_options(isolation_level=isolation_level)
         with connection_no_trans.begin():
-            tx_id = dbapi_connection.transaction.tx_id
+            tx_id = dbapi_connection.tx_context.tx_id
             assert tx_id is not None
             cursor1 = connection_no_trans.execute(sa.select(table))
             cursor2 = connection_no_trans.execute(sa.select(table))
-            assert dbapi_connection.transaction.tx_id == tx_id
+            assert dbapi_connection.tx_context.tx_id == tx_id
 
         assert set(cursor1.fetchall()) == {(5,), (6,)}
         assert set(cursor2.fetchall()) == {(5,), (6,)}
@@ -448,10 +449,10 @@ class TestTransaction(TablesTest):
 
         connection_no_trans.execution_options(isolation_level=isolation_level)
         with connection_no_trans.begin():
-            assert dbapi_connection.transaction is None
+            assert dbapi_connection.tx_context is None
             cursor1 = connection_no_trans.execute(sa.select(table))
             cursor2 = connection_no_trans.execute(sa.select(table))
-            assert dbapi_connection.transaction is None
+            assert dbapi_connection.tx_context is None
 
         assert set(cursor1.fetchall()) == {(7,), (8,)}
         assert set(cursor2.fetchall()) == {(7,), (8,)}
@@ -482,7 +483,59 @@ class TestTransactionIsolationLevel(TestBase):
                 assert dbapi_connection.tx_mode.name == ydb_isolation_settings[0]
                 assert dbapi_connection.interactive_transaction is ydb_isolation_settings[1]
                 if dbapi_connection.interactive_transaction:
-                    assert dbapi_connection.transaction is not None
-                    assert dbapi_connection.transaction.tx_id is not None
+                    assert dbapi_connection.tx_context is not None
+                    assert dbapi_connection.tx_context.tx_id is not None
                 else:
-                    assert dbapi_connection.transaction is None
+                    assert dbapi_connection.tx_context is None
+
+
+class TestEngine(TestBase):
+    @pytest.fixture(scope="module")
+    def ydb_driver(self):
+        url = config.db_url
+        driver = ydb.Driver(endpoint=f"grpc://{url.host}:{url.port}", database=url.database)
+        try:
+            driver.wait(timeout=5, fail_fast=True)
+            yield driver
+        finally:
+            driver.stop()
+
+        driver.stop()
+
+    @pytest.fixture(scope="module")
+    def ydb_pool(self, ydb_driver):
+        session_pool = ydb.SessionPool(ydb_driver, size=5, workers_threads_count=1)
+
+        yield session_pool
+
+        session_pool.stop()
+
+    def test_sa_queue_pool_with_ydb_shared_session_pool(self, ydb_driver, ydb_pool):
+        engine1 = sa.create_engine(config.db_url, poolclass=sa.QueuePool, connect_args={"ydb_session_pool": ydb_pool})
+        engine2 = sa.create_engine(config.db_url, poolclass=sa.QueuePool, connect_args={"ydb_session_pool": ydb_pool})
+
+        with engine1.connect() as conn1, engine2.connect() as conn2:
+            dbapi_conn1: dbapi.Connection = conn1.connection.dbapi_connection
+            dbapi_conn2: dbapi.Connection = conn2.connection.dbapi_connection
+
+            assert dbapi_conn1.session_pool is dbapi_conn2.session_pool
+            assert dbapi_conn1.driver is dbapi_conn2.driver
+
+        engine1.dispose()
+        engine2.dispose()
+        assert not ydb_driver._stopped
+
+    def test_sa_null_pool_with_ydb_shared_session_pool(self, ydb_driver, ydb_pool):
+        engine1 = sa.create_engine(config.db_url, poolclass=sa.NullPool, connect_args={"ydb_session_pool": ydb_pool})
+        engine2 = sa.create_engine(config.db_url, poolclass=sa.NullPool, connect_args={"ydb_session_pool": ydb_pool})
+
+        with engine1.connect() as conn1, engine2.connect() as conn2:
+            dbapi_conn1: dbapi.Connection = conn1.connection.dbapi_connection
+            dbapi_conn2: dbapi.Connection = conn2.connection.dbapi_connection
+
+            assert dbapi_conn1.session_pool is dbapi_conn2.session_pool
+            assert dbapi_conn1.driver is dbapi_conn2.driver
+
+        engine1.dispose()
+        engine2.dispose()
+        assert not ydb_driver._stopped
