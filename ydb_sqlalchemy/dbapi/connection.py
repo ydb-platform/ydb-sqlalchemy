@@ -1,7 +1,8 @@
 import posixpath
-from typing import Optional
+from typing import Optional, NamedTuple
 
 import ydb
+
 from .cursor import Cursor
 from .errors import InterfaceError, ProgrammingError, DatabaseError, InternalError, NotSupportedError
 
@@ -48,19 +49,25 @@ class Connection:
             return False
 
     def set_isolation_level(self, isolation_level: str):
+        class IsolationSettings(NamedTuple):
+            ydb_mode: ydb.AbstractTransactionModeBuilder
+            interactive: bool
+
         ydb_isolation_settings_map = {
-            IsolationLevel.AUTOCOMMIT: (ydb.SerializableReadWrite(), False),
-            IsolationLevel.SERIALIZABLE: (ydb.SerializableReadWrite(), True),
-            IsolationLevel.ONLINE_READONLY: (ydb.OnlineReadOnly(), False),
-            IsolationLevel.ONLINE_READONLY_INCONSISTENT: (ydb.OnlineReadOnly().with_allow_inconsistent_reads(), False),
-            IsolationLevel.STALE_READONLY: (ydb.StaleReadOnly(), False),
-            IsolationLevel.SNAPSHOT_READONLY: (ydb.SnapshotReadOnly(), True),
+            IsolationLevel.AUTOCOMMIT: IsolationSettings(ydb.SerializableReadWrite(), interactive=False),
+            IsolationLevel.SERIALIZABLE: IsolationSettings(ydb.SerializableReadWrite(), interactive=True),
+            IsolationLevel.ONLINE_READONLY: IsolationSettings(ydb.OnlineReadOnly(), interactive=False),
+            IsolationLevel.ONLINE_READONLY_INCONSISTENT: IsolationSettings(
+                ydb.OnlineReadOnly().with_allow_inconsistent_reads(), interactive=False
+            ),
+            IsolationLevel.STALE_READONLY: IsolationSettings(ydb.StaleReadOnly(), interactive=False),
+            IsolationLevel.SNAPSHOT_READONLY: IsolationSettings(ydb.SnapshotReadOnly(), interactive=True),
         }
         ydb_isolation_settings = ydb_isolation_settings_map[isolation_level]
         if self.transaction and self.transaction.tx_id:
             raise InternalError("Failed to set transaction mode: transaction is already began")
-        self.tx_mode = ydb_isolation_settings[0]
-        self.interactive_transaction = ydb_isolation_settings[1]
+        self.tx_mode = ydb_isolation_settings.ydb_mode
+        self.interactive_transaction = ydb_isolation_settings.interactive
 
     def get_isolation_level(self) -> str:
         if self.tx_mode.name == ydb.SerializableReadWrite().name:

@@ -1,17 +1,16 @@
-from decimal import Decimal
 from datetime import date, datetime
+from decimal import Decimal
+from typing import NamedTuple
 
 import pytest
 import sqlalchemy as sa
+import ydb
 from sqlalchemy import Table, Column, Integer, Unicode
 from sqlalchemy.testing.fixtures import TestBase, TablesTest
-
-import ydb
 from ydb._grpc.v4.protos import ydb_common_pb2
 
-from ydb_sqlalchemy.sqlalchemy import types
-
 from ydb_sqlalchemy import dbapi, IsolationLevel
+from ydb_sqlalchemy.sqlalchemy import types
 
 
 def clear_sql(stm):
@@ -459,13 +458,19 @@ class TestTransaction(TablesTest):
 
 
 class TestTransactionIsolationLevel(TestBase):
+    class IsolationSettings(NamedTuple):
+        ydb_mode: ydb.AbstractTransactionModeBuilder
+        interactive: bool
+
     YDB_ISOLATION_SETTINGS_MAP = {
-        IsolationLevel.AUTOCOMMIT: (ydb.SerializableReadWrite().name, False),
-        IsolationLevel.SERIALIZABLE: (ydb.SerializableReadWrite().name, True),
-        IsolationLevel.ONLINE_READONLY: (ydb.OnlineReadOnly().name, False),
-        IsolationLevel.ONLINE_READONLY_INCONSISTENT: (ydb.OnlineReadOnly().with_allow_inconsistent_reads().name, False),
-        IsolationLevel.STALE_READONLY: (ydb.StaleReadOnly().name, False),
-        IsolationLevel.SNAPSHOT_READONLY: (ydb.SnapshotReadOnly().name, True),
+        IsolationLevel.AUTOCOMMIT: IsolationSettings(ydb.SerializableReadWrite().name, False),
+        IsolationLevel.SERIALIZABLE: IsolationSettings(ydb.SerializableReadWrite().name, True),
+        IsolationLevel.ONLINE_READONLY: IsolationSettings(ydb.OnlineReadOnly().name, False),
+        IsolationLevel.ONLINE_READONLY_INCONSISTENT: IsolationSettings(
+            ydb.OnlineReadOnly().with_allow_inconsistent_reads().name, False
+        ),
+        IsolationLevel.STALE_READONLY: IsolationSettings(ydb.StaleReadOnly().name, False),
+        IsolationLevel.SNAPSHOT_READONLY: IsolationSettings(ydb.SnapshotReadOnly().name, True),
     }
 
     def test_connection_set(self, connection_no_trans: sa.Connection):
