@@ -6,6 +6,7 @@ import collections
 import ydb
 import ydb_sqlalchemy.dbapi as dbapi
 from ydb_sqlalchemy.dbapi.constants import YDB_KEYWORDS
+from ydb_sqlalchemy.sqlalchemy.dml import Upsert
 
 import sqlalchemy as sa
 from sqlalchemy.exc import CompileError, NoSuchTableError
@@ -341,6 +342,9 @@ class YqlCompiler(StrSQLCompiler):
 
         return parameter_types
 
+    def visit_upsert(self, insert_stmt, visited_bindparam=None, **kw):
+        return self.visit_insert(insert_stmt, visited_bindparam, **kw).replace("INSERT", "UPSERT", 1)
+
 
 class YqlDDLCompiler(DDLCompiler):
     def post_create_table(self, table: sa.Table) -> str:
@@ -379,7 +383,7 @@ class YqlDDLCompiler(DDLCompiler):
 
 
 def upsert(table):
-    return sa.sql.Insert(table)
+    return Upsert(table)
 
 
 COLUMN_TYPES = {
