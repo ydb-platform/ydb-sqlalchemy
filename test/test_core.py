@@ -543,7 +543,7 @@ class TestEngine(TestBase):
         engine2.dispose()
         assert not ydb_driver._stopped
 
-        
+
 class TestUpsert(TablesTest):
     @classmethod
     def define_tables(cls, metadata):
