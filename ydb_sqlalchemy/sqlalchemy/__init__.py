@@ -538,9 +538,23 @@ class YqlDialect(StrCompileDialect):
         # TODO: implement me
         return []
 
-    def do_commit(self, dbapi_connection) -> None:
-        # TODO: needs to implement?
-        pass
+    def set_isolation_level(self, dbapi_connection: dbapi.Connection, level: str) -> None:
+        dbapi_connection.set_isolation_level(level)
+
+    def get_default_isolation_level(self, dbapi_conn: dbapi.Connection) -> str:
+        return dbapi.IsolationLevel.AUTOCOMMIT
+
+    def get_isolation_level(self, dbapi_connection: dbapi.Connection) -> str:
+        return dbapi_connection.get_isolation_level()
+
+    def do_begin(self, dbapi_connection: dbapi.Connection) -> None:
+        dbapi_connection.begin()
+
+    def do_rollback(self, dbapi_connection: dbapi.Connection) -> None:
+        dbapi_connection.rollback()
+
+    def do_commit(self, dbapi_connection: dbapi.Connection) -> None:
+        dbapi_connection.commit()
 
     def _format_variables(
         self,

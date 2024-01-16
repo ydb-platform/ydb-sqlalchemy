@@ -1,10 +1,10 @@
 import dataclasses
 import itertools
 import logging
-
-from typing import Any, Mapping, Optional, Sequence, Union, Dict
+from typing import Any, Mapping, Optional, Sequence, Union, Dict, Callable
 
 import ydb
+
 from .errors import (
     InternalError,
     IntegrityError,
@@ -14,7 +14,6 @@ from .errors import (
     OperationalError,
     NotSupportedError,
 )
-
 
 logger = logging.getLogger(__name__)
 
@@ -33,16 +32,19 @@ class YdbQuery:
 
 
 class Cursor(object):
-    def __init__(self, connection):
-        self.connection = connection
+    def __init__(
+        self,
+        session_pool: ydb.SessionPool,
+        tx_context: Optional[ydb.BaseTxContext] = None,
+    ):
+        self.session_pool = session_pool
+        self.tx_context = tx_context
         self.description = None
         self.arraysize = 1
         self.rows = None
         self._rows_prefetched = None
 
     def execute(self, operation: YdbQuery, parameters: Optional[Mapping[str, Any]] = None):
-        self.description = None
-
         if operation.is_ddl or not operation.parameters_types:
             query = operation.yql_text
             is_ddl = operation.is_ddl
@@ -51,45 +53,14 @@ class Cursor(object):
             is_ddl = operation.is_ddl
 
         logger.info("execute sql: %s, params: %s", query, parameters)
+        if is_ddl:
+            chunks = self.session_pool.retry_operation_sync(self._execute_ddl, None, query)
+        else:
+            if self.tx_context:
+                chunks = self._execute_dml(self.tx_context.session, query, parameters, self.tx_context)
+            else:
+                chunks = self.session_pool.retry_operation_sync(self._execute_dml, None, query, parameters)
 
-        def _execute_in_pool(cli: ydb.Session):
-            try:
-                if is_ddl:
-                    return cli.execute_scheme(query)
-
-                prepared_query = query
-                if isinstance(query, str) and parameters:
-                    prepared_query = cli.prepare(query)
-
-                return cli.transaction().execute(prepared_query, parameters, commit_tx=True)
-            except (ydb.issues.AlreadyExists, ydb.issues.PreconditionFailed) as e:
-                raise IntegrityError(e.message, e.issues, e.status) from e
-            except (ydb.issues.Unsupported, ydb.issues.Unimplemented) as e:
-                raise NotSupportedError(e.message, e.issues, e.status) from e
-            except (ydb.issues.BadRequest, ydb.issues.SchemeError) as e:
-                raise ProgrammingError(e.message, e.issues, e.status) from e
-            except (
-                ydb.issues.TruncatedResponseError,
-                ydb.issues.ConnectionError,
-                ydb.issues.Aborted,
-                ydb.issues.Unavailable,
-                ydb.issues.Overloaded,
-                ydb.issues.Undetermined,
-                ydb.issues.Timeout,
-                ydb.issues.Cancelled,
-                ydb.issues.SessionBusy,
-                ydb.issues.SessionExpired,
-                ydb.issues.SessionPoolEmpty,
-            ) as e:
-                raise OperationalError(e.message, e.issues, e.status) from e
-            except ydb.issues.GenericError as e:
-                raise DataError(e.message, e.issues, e.status) from e
-            except ydb.issues.InternalError as e:
-                raise InternalError(e.message, e.issues, e.status) from e
-            except ydb.Error as e:
-                raise DatabaseError(e.message, e.issues, e.status) from e
-
-        chunks = self.connection.pool.retry_operation_sync(_execute_in_pool)
         rows = self._rows_iterable(chunks)
         # Prefetch the description:
         try:
@@ -103,7 +74,59 @@ class Cursor(object):
 
         self.rows = rows
 
-    def _rows_iterable(self, chunks_iterable):
+    @classmethod
+    def _execute_dml(
+        cls,
+        session: ydb.Session,
+        query: ydb.DataQuery,
+        parameters: Optional[Mapping[str, Any]] = None,
+        tx_context: Optional[ydb.BaseTxContext] = None,
+    ) -> ydb.convert.ResultSets:
+        prepared_query = query
+        if isinstance(query, str) and parameters:
+            prepared_query = session.prepare(query)
+
+        if tx_context:
+            return cls._handle_ydb_errors(tx_context.execute, prepared_query, parameters)
+
+        return cls._handle_ydb_errors(session.transaction().execute, prepared_query, parameters, commit_tx=True)
+
+    @classmethod
+    def _execute_ddl(cls, session: ydb.Session, query: str) -> ydb.convert.ResultSets:
+        return cls._handle_ydb_errors(session.execute_scheme, query)
+
+    @staticmethod
+    def _handle_ydb_errors(callee: Callable, *args, **kwargs) -> Any:
+        try:
+            return callee(*args, **kwargs)
+        except (ydb.issues.AlreadyExists, ydb.issues.PreconditionFailed) as e:
+            raise IntegrityError(e.message, e.issues, e.status) from e
+        except (ydb.issues.Unsupported, ydb.issues.Unimplemented) as e:
+            raise NotSupportedError(e.message, e.issues, e.status) from e
+        except (ydb.issues.BadRequest, ydb.issues.SchemeError) as e:
+            raise ProgrammingError(e.message, e.issues, e.status) from e
+        except (
+            ydb.issues.TruncatedResponseError,
+            ydb.issues.ConnectionError,
+            ydb.issues.Aborted,
+            ydb.issues.Unavailable,
+            ydb.issues.Overloaded,
+            ydb.issues.Undetermined,
+            ydb.issues.Timeout,
+            ydb.issues.Cancelled,
+            ydb.issues.SessionBusy,
+            ydb.issues.SessionExpired,
+            ydb.issues.SessionPoolEmpty,
+        ) as e:
+            raise OperationalError(e.message, e.issues, e.status) from e
+        except ydb.issues.GenericError as e:
+            raise DataError(e.message, e.issues, e.status) from e
+        except ydb.issues.InternalError as e:
+            raise InternalError(e.message, e.issues, e.status) from e
+        except ydb.Error as e:
+            raise DatabaseError(e.message, e.issues, e.status) from e
+
+    def _rows_iterable(self, chunks_iterable: ydb.convert.ResultSets):
         try:
             for chunk in chunks_iterable:
                 self.description = [
