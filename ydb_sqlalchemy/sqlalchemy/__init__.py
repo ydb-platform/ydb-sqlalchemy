@@ -3,6 +3,7 @@ Experimental
 Work in progress, breaking changes are possible.
 """
 import collections
+import collections.abc
 import ydb
 import ydb_sqlalchemy.dbapi as dbapi
 from ydb_sqlalchemy.dbapi.constants import YDB_KEYWORDS
@@ -303,7 +304,7 @@ class YqlCompiler(StrSQLCompiler):
         """
         This method extracts information about bound variables from the table definition and parameters.
         """
-        if isinstance(post_compile_parameters, Mapping):
+        if isinstance(post_compile_parameters, collections.abc.Mapping):
             post_compile_parameters = [post_compile_parameters]
 
         parameters_values = collections.defaultdict(list)
