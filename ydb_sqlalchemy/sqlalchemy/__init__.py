@@ -479,7 +479,7 @@ class YqlDialect(StrCompileDialect):
 
     @classmethod
     def import_dbapi(cls: Any):
-        return dbapi
+        return dbapi.YdbDBApi()
 
     def _describe_table(self, connection, table_name, schema=None):
         if schema is not None:

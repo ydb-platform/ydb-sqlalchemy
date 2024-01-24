@@ -69,7 +69,7 @@ def test_cursor_raw_query(connection):
 
 def test_errors(connection):
     with pytest.raises(dbapi.InterfaceError):
-        dbapi.connect("localhost:2136", database="/local666")
+        dbapi.YdbDBApi().connect("localhost:2136", database="/local666")
 
     cur = connection.cursor()
 
