@@ -303,7 +303,7 @@ class YqlCompiler(StrSQLCompiler):
         """
         This method extracts information about bound variables from the table definition and parameters.
         """
-        if isinstance(post_compile_parameters, collections.Mapping):
+        if isinstance(post_compile_parameters, Mapping):
             post_compile_parameters = [post_compile_parameters]
 
         parameters_values = collections.defaultdict(list)
