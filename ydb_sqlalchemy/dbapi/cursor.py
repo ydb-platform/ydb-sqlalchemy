@@ -1,9 +1,13 @@
 import dataclasses
 import itertools
 import logging
-from typing import Any, Mapping, Optional, Sequence, Union, Dict, Callable
+import functools
+from typing import Any, Mapping, Optional, Sequence, Union, Dict
+import collections.abc
+from sqlalchemy import util
 
 import ydb
+import ydb.aio
 
 from .errors import (
     InternalError,
@@ -31,74 +35,11 @@ class YdbQuery:
     is_ddl: bool = False
 
 
-class Cursor(object):
-    def __init__(
-        self,
-        session_pool: ydb.SessionPool,
-        tx_context: Optional[ydb.BaseTxContext] = None,
-    ):
-        self.session_pool = session_pool
-        self.tx_context = tx_context
-        self.description = None
-        self.arraysize = 1
-        self.rows = None
-        self._rows_prefetched = None
-
-    def execute(self, operation: YdbQuery, parameters: Optional[Mapping[str, Any]] = None):
-        if operation.is_ddl or not operation.parameters_types:
-            query = operation.yql_text
-            is_ddl = operation.is_ddl
-        else:
-            query = ydb.DataQuery(operation.yql_text, operation.parameters_types)
-            is_ddl = operation.is_ddl
-
-        logger.info("execute sql: %s, params: %s", query, parameters)
-        if is_ddl:
-            chunks = self.session_pool.retry_operation_sync(self._execute_ddl, None, query)
-        else:
-            if self.tx_context:
-                chunks = self._execute_dml(self.tx_context.session, query, parameters, self.tx_context)
-            else:
-                chunks = self.session_pool.retry_operation_sync(self._execute_dml, None, query, parameters)
-
-        rows = self._rows_iterable(chunks)
-        # Prefetch the description:
+def _handle_ydb_errors(func):
+    @functools.wraps(func)
+    def wrapper(self, *args, **kwargs):
         try:
-            first_row = next(rows)
-        except StopIteration:
-            pass
-        else:
-            rows = itertools.chain((first_row,), rows)
-        if self.rows is not None:
-            rows = itertools.chain(self.rows, rows)
-
-        self.rows = rows
-
-    @classmethod
-    def _execute_dml(
-        cls,
-        session: ydb.Session,
-        query: ydb.DataQuery,
-        parameters: Optional[Mapping[str, Any]] = None,
-        tx_context: Optional[ydb.BaseTxContext] = None,
-    ) -> ydb.convert.ResultSets:
-        prepared_query = query
-        if isinstance(query, str) and parameters:
-            prepared_query = session.prepare(query)
-
-        if tx_context:
-            return cls._handle_ydb_errors(tx_context.execute, prepared_query, parameters)
-
-        return cls._handle_ydb_errors(session.transaction().execute, prepared_query, parameters, commit_tx=True)
-
-    @classmethod
-    def _execute_ddl(cls, session: ydb.Session, query: str) -> ydb.convert.ResultSets:
-        return cls._handle_ydb_errors(session.execute_scheme, query)
-
-    @staticmethod
-    def _handle_ydb_errors(callee: Callable, *args, **kwargs) -> Any:
-        try:
-            return callee(*args, **kwargs)
+            return func(self, *args, **kwargs)
         except (ydb.issues.AlreadyExists, ydb.issues.PreconditionFailed) as e:
             raise IntegrityError(e.message, e.issues, e.status) from e
         except (ydb.issues.Unsupported, ydb.issues.Unimplemented) as e:
@@ -125,6 +66,98 @@ class Cursor(object):
             raise InternalError(e.message, e.issues, e.status) from e
         except ydb.Error as e:
             raise DatabaseError(e.message, e.issues, e.status) from e
+
+    return wrapper
+
+
+class Cursor:
+    def __init__(
+        self,
+        session_pool: Union[ydb.SessionPool, ydb.aio.SessionPool],
+        tx_context: Optional[ydb.BaseTxContext] = None,
+    ):
+        self.session_pool = session_pool
+        self.tx_context = tx_context
+        self.description = None
+        self.arraysize = 1
+        self.rows = None
+        self._rows_prefetched = None
+
+    def execute(self, operation: YdbQuery, parameters: Optional[Mapping[str, Any]] = None):
+        if operation.is_ddl or not operation.parameters_types:
+            query = operation.yql_text
+            is_ddl = operation.is_ddl
+        else:
+            query = ydb.DataQuery(operation.yql_text, operation.parameters_types)
+            is_ddl = operation.is_ddl
+
+        logger.info("execute sql: %s, params: %s", query, parameters)
+        if is_ddl:
+            chunks = self._execute_ddl(query)
+        else:
+            chunks = self._execute_dml(query, parameters)
+
+        rows = self._rows_iterable(chunks)
+        # Prefetch the description:
+        try:
+            first_row = next(rows)
+        except StopIteration:
+            pass
+        else:
+            rows = itertools.chain((first_row,), rows)
+        if self.rows is not None:
+            rows = itertools.chain(self.rows, rows)
+
+        self.rows = rows
+
+    @_handle_ydb_errors
+    def _execute_dml(
+        self, query: Union[ydb.DataQuery, str], parameters: Optional[Mapping[str, Any]] = None
+    ) -> ydb.convert.ResultSets:
+        prepared_query = query
+        if isinstance(query, str) and parameters:
+            if self.tx_context:
+                prepared_query = self._run_operation_in_session(self._prepare, query)
+            else:
+                prepared_query = self._retry_operation_in_pool(self._prepare, query)
+
+        if self.tx_context:
+            return self._run_operation_in_tx(self._execute_in_tx, prepared_query, parameters)
+
+        return self._retry_operation_in_pool(self._execute_in_session, prepared_query, parameters)
+
+    @_handle_ydb_errors
+    def _execute_ddl(self, query: str) -> ydb.convert.ResultSets:
+        return self._retry_operation_in_pool(self._execute_scheme, query)
+
+    @staticmethod
+    def _execute_scheme(session: ydb.Session, query: str) -> ydb.convert.ResultSets:
+        return session.execute_scheme(query)
+
+    @staticmethod
+    def _prepare(session: ydb.Session, query: str) -> ydb.DataQuery:
+        return session.prepare(query)
+
+    @staticmethod
+    def _execute_in_tx(
+        tx_context: ydb.TxContext, prepared_query: ydb.DataQuery, parameters: Optional[Mapping[str, Any]]
+    ) -> ydb.convert.ResultSets:
+        return tx_context.execute(prepared_query, parameters, commit_tx=False)
+
+    @staticmethod
+    def _execute_in_session(
+        session: ydb.Session, prepared_query: ydb.DataQuery, parameters: Optional[Mapping[str, Any]]
+    ) -> ydb.convert.ResultSets:
+        return session.transaction().execute(prepared_query, parameters, commit_tx=True)
+
+    def _run_operation_in_tx(self, callee: collections.abc.Callable, *args, **kwargs):
+        return callee(self.tx_context, *args, **kwargs)
+
+    def _run_operation_in_session(self, callee: collections.abc.Callable, *args, **kwargs):
+        return callee(self.tx_context.session, *args, **kwargs)
+
+    def _retry_operation_in_pool(self, callee: collections.abc.Callable, *args, **kwargs):
+        return self.session_pool.retry_operation_sync(callee, None, *args, **kwargs)
 
     def _rows_iterable(self, chunks_iterable: ydb.convert.ResultSets):
         try:
@@ -186,3 +219,36 @@ class Cursor(object):
     @property
     def rowcount(self):
         return len(self._ensure_prefetched())
+
+
+class AsyncCursor(Cursor):
+    _await = staticmethod(util.await_only)
+
+    @staticmethod
+    async def _execute_scheme(session: ydb.aio.table.Session, query: str) -> ydb.convert.ResultSets:
+        return await session.execute_scheme(query)
+
+    @staticmethod
+    async def _prepare(session: ydb.aio.table.Session, query: str) -> ydb.DataQuery:
+        return await session.prepare(query)
+
+    @staticmethod
+    async def _execute_in_tx(
+        tx_context: ydb.aio.table.TxContext, prepared_query: ydb.DataQuery, parameters: Optional[Mapping[str, Any]]
+    ) -> ydb.convert.ResultSets:
+        return await tx_context.execute(prepared_query, parameters, commit_tx=False)
+
+    @staticmethod
+    async def _execute_in_session(
+        session: ydb.aio.table.Session, prepared_query: ydb.DataQuery, parameters: Optional[Mapping[str, Any]]
+    ) -> ydb.convert.ResultSets:
+        return await session.transaction().execute(prepared_query, parameters, commit_tx=True)
+
+    def _run_operation_in_tx(self, callee: collections.abc.Coroutine, *args, **kwargs):
+        return self._await(callee(self.tx_context, *args, **kwargs))
+
+    def _run_operation_in_session(self, callee: collections.abc.Coroutine, *args, **kwargs):
+        return self._await(callee(self.tx_context.session, *args, **kwargs))
+
+    def _retry_operation_in_pool(self, callee: collections.abc.Coroutine, *args, **kwargs):
+        return self._await(self.session_pool.retry_operation(callee, None, *args, **kwargs))
