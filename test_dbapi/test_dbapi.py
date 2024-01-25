@@ -1,11 +1,11 @@
+from contextlib import suppress
+
 import pytest
 import pytest_asyncio
-
-import ydb
-import ydb_sqlalchemy.dbapi as dbapi
-
-from contextlib import suppress
 import sqlalchemy.util as util
+import ydb
+
+import ydb_sqlalchemy.dbapi as dbapi
 
 
 class BaseDBApiTestSuit:

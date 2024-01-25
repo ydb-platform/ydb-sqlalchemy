@@ -1,16 +1,16 @@
-from .connection import Connection, AsyncConnection, IsolationLevel  # noqa: F401
-from .cursor import Cursor, AsyncCursor, YdbQuery  # noqa: F401
+from .connection import AsyncConnection, Connection, IsolationLevel  # noqa: F401
+from .cursor import AsyncCursor, Cursor, YdbQuery  # noqa: F401
 from .errors import (
-    Warning,
-    Error,
-    InterfaceError,
     DatabaseError,
     DataError,
-    OperationalError,
+    Error,
     IntegrityError,
+    InterfaceError,
     InternalError,
-    ProgrammingError,
     NotSupportedError,
+    OperationalError,
+    ProgrammingError,
+    Warning,
 )
 
 

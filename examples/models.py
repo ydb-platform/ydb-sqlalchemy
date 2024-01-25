@@ -1,7 +1,6 @@
 import sqlalchemy.orm as orm
 from sqlalchemy import Column, Integer, Unicode
 
-
 Base = orm.declarative_base()
 
 
