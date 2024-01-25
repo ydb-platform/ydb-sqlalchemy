@@ -1,6 +1,5 @@
 import sqlalchemy as sa
-
-from sqlalchemy import Table, Column, Integer, Unicode, Numeric
+from sqlalchemy import Column, Integer, Numeric, Table, Unicode
 from sqlalchemy.testing.fixtures import TablesTest
 
 

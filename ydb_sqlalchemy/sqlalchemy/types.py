@@ -1,6 +1,7 @@
-from sqlalchemy import exc, ColumnElement, ARRAY, types
+from typing import Any, Mapping, Type, Union
+
+from sqlalchemy import ARRAY, ColumnElement, exc, types
 from sqlalchemy.sql import type_api
-from typing import Mapping, Any, Union, Type
 
 
 class UInt32(types.Integer):

@@ -56,6 +56,7 @@ $ tox -e style
 
 Reformat code:
 ```bash
+$ tox -e isort
 $ tox -e black-format
 ```
 

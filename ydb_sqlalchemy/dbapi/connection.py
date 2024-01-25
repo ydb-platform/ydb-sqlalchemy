@@ -1,10 +1,11 @@
-import posixpath
-from typing import Optional, NamedTuple, Any, List
-
-import ydb
-import sqlalchemy.util as util
 import collections.abc
-from .cursor import Cursor, AsyncCursor
+import posixpath
+from typing import Any, List, NamedTuple, Optional
+
+import sqlalchemy.util as util
+import ydb
+
+from .cursor import AsyncCursor, Cursor
 from .errors import InterfaceError, InternalError, NotSupportedError
 
 

@@ -4,17 +4,15 @@ from decimal import Decimal
 from typing import NamedTuple
 
 import pytest
-
 import sqlalchemy as sa
-from sqlalchemy import Table, Column, Integer, Unicode, String
-from sqlalchemy.testing.fixtures import TestBase, TablesTest, config
-
 import ydb
+from sqlalchemy import Column, Integer, String, Table, Unicode
+from sqlalchemy.testing.fixtures import TablesTest, TestBase, config
 from ydb._grpc.v4.protos import ydb_common_pb2
 
-from ydb_sqlalchemy import dbapi, IsolationLevel
-from ydb_sqlalchemy.sqlalchemy import types
+from ydb_sqlalchemy import IsolationLevel, dbapi
 from ydb_sqlalchemy import sqlalchemy as ydb_sa
+from ydb_sqlalchemy.sqlalchemy import types
 
 
 def clear_sql(stm):
