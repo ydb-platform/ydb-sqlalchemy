@@ -1,4 +1,4 @@
-from .connection import Connection, IsolationLevel  # noqa: F401
+from .connection import Connection, AsyncConnection, IsolationLevel  # noqa: F401
 from .cursor import Cursor, AsyncCursor, YdbQuery  # noqa: F401
 from .errors import (
     Warning,
@@ -36,5 +36,8 @@ class YdbDBApi:
         }.items():
             setattr(self, name, value)
 
-    def connect(self, *args, **kwargs):
+    def connect(self, *args, **kwargs) -> Connection:
         return Connection(*args, **kwargs)
+
+    def async_connect(self, *args, **kwargs) -> AsyncConnection:
+        return AsyncConnection(*args, **kwargs)

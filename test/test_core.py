@@ -1,3 +1,4 @@
+import asyncio
 from datetime import date, datetime
 from decimal import Decimal
 from typing import NamedTuple
@@ -21,6 +22,8 @@ def clear_sql(stm):
 
 
 class TestText(TestBase):
+    __backend__ = True
+
     def test_sa_text(self, connection):
         rs = connection.execute(sa.text("SELECT 1 AS value"))
         assert rs.fetchone() == (1,)
@@ -38,6 +41,8 @@ class TestText(TestBase):
 
 
 class TestCrud(TablesTest):
+    __backend__ = True
+
     @classmethod
     def define_tables(cls, metadata):
         Table(
@@ -82,6 +87,8 @@ class TestCrud(TablesTest):
 
 
 class TestSimpleSelect(TablesTest):
+    __backend__ = True
+
     @classmethod
     def define_tables(cls, metadata):
         Table(
@@ -174,6 +181,8 @@ class TestSimpleSelect(TablesTest):
 
 
 class TestTypes(TablesTest):
+    __backend__ = True
+
     @classmethod
     def define_tables(cls, metadata):
         Table(
@@ -211,6 +220,7 @@ class TestTypes(TablesTest):
 
 
 class TestWithClause(TablesTest):
+    __backend__ = True
     run_create_tables = "each"
 
     @staticmethod
@@ -223,10 +233,7 @@ class TestWithClause(TablesTest):
         )
         table.create(connection)
 
-        session: ydb.Session = connection.connection.driver_connection.session_pool.acquire()
-        table_description = session.describe_table("/local/" + table.name)
-        connection.connection.driver_connection.session_pool.release(session)
-        return table_description
+        return connection.connection.driver_connection.describe(table.name)
 
     @pytest.mark.parametrize(
         "auto_partitioning_by_size,res",
@@ -374,6 +381,8 @@ class TestWithClause(TablesTest):
 
 
 class TestTransaction(TablesTest):
+    __backend__ = True
+
     @classmethod
     def define_tables(cls, metadata: sa.MetaData):
         Table(
@@ -462,6 +471,8 @@ class TestTransaction(TablesTest):
 
 
 class TestTransactionIsolationLevel(TestBase):
+    __backend__ = True
+
     class IsolationSettings(NamedTuple):
         ydb_mode: ydb.AbstractTransactionModeBuilder
         interactive: bool
@@ -493,7 +504,10 @@ class TestTransactionIsolationLevel(TestBase):
 
 
 class TestEngine(TestBase):
-    @pytest.fixture(scope="module")
+    __backend__ = True
+    __only_on__ = "yql+ydb"
+
+    @pytest.fixture(scope="class")
     def ydb_driver(self):
         url = config.db_url
         driver = ydb.Driver(endpoint=f"grpc://{url.host}:{url.port}", database=url.database)
@@ -505,13 +519,14 @@ class TestEngine(TestBase):
 
         driver.stop()
 
-    @pytest.fixture(scope="module")
+    @pytest.fixture(scope="class")
     def ydb_pool(self, ydb_driver):
         session_pool = ydb.SessionPool(ydb_driver, size=5, workers_threads_count=1)
 
-        yield session_pool
-
-        session_pool.stop()
+        try:
+            yield session_pool
+        finally:
+            session_pool.stop()
 
     def test_sa_queue_pool_with_ydb_shared_session_pool(self, ydb_driver, ydb_pool):
         engine1 = sa.create_engine(config.db_url, poolclass=sa.QueuePool, connect_args={"ydb_session_pool": ydb_pool})
@@ -544,7 +559,36 @@ class TestEngine(TestBase):
         assert not ydb_driver._stopped
 
 
+class TestAsyncEngine(TestEngine):
+    __only_on__ = "yql+ydb_async"
+
+    @pytest.fixture(scope="class")
+    def ydb_driver(self):
+        loop = asyncio.get_event_loop()
+        url = config.db_url
+        driver = ydb.aio.Driver(endpoint=f"grpc://{url.host}:{url.port}", database=url.database)
+        try:
+            loop.run_until_complete(driver.wait(timeout=5, fail_fast=True))
+            yield driver
+        finally:
+            loop.run_until_complete(driver.stop())
+
+        loop.run_until_complete(driver.stop())
+
+    @pytest.fixture(scope="class")
+    def ydb_pool(self, ydb_driver):
+        session_pool = ydb.aio.SessionPool(ydb_driver, size=5)
+
+        try:
+            yield session_pool
+        finally:
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(session_pool.stop())
+
+
 class TestUpsert(TablesTest):
+    __backend__ = True
+
     @classmethod
     def define_tables(cls, metadata):
         Table(
@@ -644,6 +688,8 @@ class TestUpsert(TablesTest):
 
 
 class TestUpsertDoesNotReplaceInsert(TablesTest):
+    __backend__ = True
+
     @classmethod
     def define_tables(cls, metadata):
         Table(
