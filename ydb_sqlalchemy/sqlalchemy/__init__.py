@@ -573,15 +573,12 @@ class YqlDialect(StrCompileDialect):
         return as_compatible
 
     @reflection.cache
-    def get_table_names(self, connection, schema=None, **kw):
+    def get_table_names(self, connection, schema=None, **kw) -> List[str]:
         if schema:
             raise dbapi.NotSupportedError("unsupported on non empty schema")
 
-        driver = connection.connection.driver_connection.driver
-        db_path = driver._driver_config.database
-        children = driver.scheme_client.list_directory(db_path).children
-
-        return [child.name for child in children if child.is_table()]
+        raw_conn = connection.connection
+        return raw_conn.get_table_names()
 
     @reflection.cache
     def has_table(self, connection, table_name, schema=None, **kwargs):
@@ -614,6 +611,9 @@ class YqlDialect(StrCompileDialect):
 
     def get_isolation_level(self, dbapi_connection: dbapi.Connection) -> str:
         return dbapi_connection.get_isolation_level()
+
+    def connect(self, *cargs, **cparams):
+        return self.loaded_dbapi.connect(*cargs, **cparams)
 
     def do_begin(self, dbapi_connection: dbapi.Connection) -> None:
         dbapi_connection.begin()
@@ -697,3 +697,12 @@ class YqlDialect(StrCompileDialect):
     ) -> None:
         operation, parameters = self._make_ydb_operation(statement, context, parameters, execute_many=False)
         cursor.execute(operation, parameters)
+
+
+class AsyncYqlDialect(YqlDialect):
+    driver = "ydb_async"
+    is_async = True
+    supports_statement_cache = False
+
+    def connect(self, *cargs, **cparams):
+        return self.loaded_dbapi.async_connect(*cargs, **cparams)

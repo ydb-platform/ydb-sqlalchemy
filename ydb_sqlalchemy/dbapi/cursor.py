@@ -2,7 +2,7 @@ import dataclasses
 import itertools
 import logging
 import functools
-from typing import Any, Mapping, Optional, Sequence, Union, Dict
+from typing import Any, Mapping, Optional, Sequence, Union, Dict, List
 import collections.abc
 from sqlalchemy import util
 
@@ -37,9 +37,9 @@ class YdbQuery:
 
 def _handle_ydb_errors(func):
     @functools.wraps(func)
-    def wrapper(self, *args, **kwargs):
+    def wrapper(*args, **kwargs):
         try:
-            return func(self, *args, **kwargs)
+            return func(*args, **kwargs)
         except (ydb.issues.AlreadyExists, ydb.issues.PreconditionFailed) as e:
             raise IntegrityError(e.message, e.issues, e.status) from e
         except (ydb.issues.Unsupported, ydb.issues.Unimplemented) as e:
@@ -66,6 +66,8 @@ def _handle_ydb_errors(func):
             raise InternalError(e.message, e.issues, e.status) from e
         except ydb.Error as e:
             raise DatabaseError(e.message, e.issues, e.status) from e
+        except Exception as e:
+            raise DatabaseError("Failed to execute query") from e
 
     return wrapper
 
@@ -82,6 +84,22 @@ class Cursor:
         self.arraysize = 1
         self.rows = None
         self._rows_prefetched = None
+
+    @_handle_ydb_errors
+    def describe_table(self, abs_table_path: str) -> ydb.TableDescription:
+        return self._retry_operation_in_pool(self._describe_table, abs_table_path)
+
+    def check_exists(self, table_path: str) -> bool:
+        try:
+            self._retry_operation_in_pool(self._describe_path, table_path)
+            return True
+        except ydb.SchemeError:
+            return False
+
+    @_handle_ydb_errors
+    def get_table_names(self) -> List[str]:
+        directory: ydb.Directory = self._retry_operation_in_pool(self._list_directory)
+        return [child.name for child in directory.children if child.is_table()]
 
     def execute(self, operation: YdbQuery, parameters: Optional[Mapping[str, Any]] = None):
         if operation.is_ddl or not operation.parameters_types:
@@ -133,6 +151,18 @@ class Cursor:
     @staticmethod
     def _execute_scheme(session: ydb.Session, query: str) -> ydb.convert.ResultSets:
         return session.execute_scheme(query)
+
+    @staticmethod
+    def _describe_table(session: ydb.Session, abs_table_path: str) -> ydb.TableDescription:
+        return session.describe_table(abs_table_path)
+
+    @staticmethod
+    def _describe_path(session: ydb.Session, table_path: str) -> ydb.SchemeEntry:
+        return session._driver.scheme_client.describe_path(table_path)
+
+    @staticmethod
+    def _list_directory(session: ydb.Session) -> ydb.Directory:
+        return session._driver.scheme_client.list_directory(session._driver._driver_config.database)
 
     @staticmethod
     def _prepare(session: ydb.Session, query: str) -> ydb.DataQuery:
@@ -225,6 +255,18 @@ class AsyncCursor(Cursor):
     _await = staticmethod(util.await_only)
 
     @staticmethod
+    async def _describe_table(session: ydb.aio.table.Session, abs_table_path: str) -> ydb.TableDescription:
+        return await session.describe_table(abs_table_path)
+
+    @staticmethod
+    async def _describe_path(session: ydb.aio.table.Session, table_path: str) -> ydb.SchemeEntry:
+        return await session._driver.scheme_client.describe_path(table_path)
+
+    @staticmethod
+    async def _list_directory(session: ydb.aio.table.Session) -> ydb.Directory:
+        return await session._driver.scheme_client.list_directory(session._driver._driver_config.database)
+
+    @staticmethod
     async def _execute_scheme(session: ydb.aio.table.Session, query: str) -> ydb.convert.ResultSets:
         return await session.execute_scheme(query)
 
@@ -251,4 +293,4 @@ class AsyncCursor(Cursor):
         return self._await(callee(self.tx_context.session, *args, **kwargs))
 
     def _retry_operation_in_pool(self, callee: collections.abc.Coroutine, *args, **kwargs):
-        return self._await(self.session_pool.retry_operation(callee, None, *args, **kwargs))
+        return self._await(self.session_pool.retry_operation(callee, *args, **kwargs))

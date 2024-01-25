@@ -9,3 +9,4 @@ dockerpty==0.4.1
 flake8==3.9.2
 black==23.3.0
 pytest-cov
+pytest-asyncio
