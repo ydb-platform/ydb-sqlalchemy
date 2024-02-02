@@ -571,8 +571,6 @@ class TestAsyncEngine(TestEngine):
         finally:
             loop.run_until_complete(driver.stop())
 
-        loop.run_until_complete(driver.stop())
-
     @pytest.fixture(scope="class")
     def ydb_pool(self, ydb_driver):
         session_pool = ydb.aio.SessionPool(ydb_driver, size=5)
