@@ -9,6 +9,28 @@ import ydb_sqlalchemy.dbapi as dbapi
 
 
 class BaseDBApiTestSuit:
+    def _test_isolation_level_read_only(self, connection: dbapi.Connection, isolation_level: str, read_only: bool):
+        connection.cursor().execute(
+            dbapi.YdbQuery("CREATE TABLE foo(id Int64 NOT NULL, PRIMARY KEY (id))", is_ddl=True)
+        )
+        connection.set_isolation_level(isolation_level)
+
+        cursor = connection.cursor()
+
+        connection.begin()
+
+        query = dbapi.YdbQuery("UPSERT INTO foo(id) VALUES (1)")
+        if read_only:
+            with pytest.raises(dbapi.DatabaseError):
+                cursor.execute(query)
+        else:
+            cursor.execute(query)
+
+        connection.rollback()
+
+        connection.cursor().execute(dbapi.YdbQuery("DROP TABLE foo", is_ddl=True))
+        connection.cursor().close()
+
     def _test_connection(self, connection: dbapi.Connection):
         connection.commit()
         connection.rollback()
@@ -100,13 +122,27 @@ class BaseDBApiTestSuit:
 
 
 class TestSyncConnection(BaseDBApiTestSuit):
-    @pytest.fixture(scope="class")
+    @pytest.fixture
     def sync_connection(self) -> dbapi.Connection:
         conn = dbapi.YdbDBApi().connect(host="localhost", port="2136", database="/local")
         try:
             yield conn
         finally:
             conn.close()
+
+    @pytest.mark.parametrize(
+        "isolation_level, read_only",
+        [
+            (dbapi.IsolationLevel.SERIALIZABLE, False),
+            (dbapi.IsolationLevel.AUTOCOMMIT, False),
+            (dbapi.IsolationLevel.ONLINE_READONLY, True),
+            (dbapi.IsolationLevel.ONLINE_READONLY_INCONSISTENT, True),
+            (dbapi.IsolationLevel.STALE_READONLY, True),
+            (dbapi.IsolationLevel.SNAPSHOT_READONLY, True),
+        ],
+    )
+    def test_isolation_level_read_only(self, isolation_level: str, read_only: bool, sync_connection: dbapi.Connection):
+        self._test_isolation_level_read_only(sync_connection, isolation_level, read_only)
 
     def test_connection(self, sync_connection: dbapi.Connection):
         self._test_connection(sync_connection)
@@ -118,9 +154,8 @@ class TestSyncConnection(BaseDBApiTestSuit):
         return self._test_errors(sync_connection)
 
 
-@pytest.mark.asyncio(scope="class")
 class TestAsyncConnection(BaseDBApiTestSuit):
-    @pytest_asyncio.fixture(scope="class")
+    @pytest_asyncio.fixture
     async def async_connection(self) -> dbapi.AsyncConnection:
         def connect():
             return dbapi.YdbDBApi().async_connect(host="localhost", port="2136", database="/local")
@@ -131,11 +166,31 @@ class TestAsyncConnection(BaseDBApiTestSuit):
         finally:
             await util.greenlet_spawn(conn.close)
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "isolation_level, read_only",
+        [
+            (dbapi.IsolationLevel.SERIALIZABLE, False),
+            (dbapi.IsolationLevel.AUTOCOMMIT, False),
+            (dbapi.IsolationLevel.ONLINE_READONLY, True),
+            (dbapi.IsolationLevel.ONLINE_READONLY_INCONSISTENT, True),
+            (dbapi.IsolationLevel.STALE_READONLY, True),
+            (dbapi.IsolationLevel.SNAPSHOT_READONLY, True),
+        ],
+    )
+    async def test_isolation_level_read_only(
+        self, isolation_level: str, read_only: bool, async_connection: dbapi.AsyncConnection
+    ):
+        await util.greenlet_spawn(self._test_isolation_level_read_only, async_connection, isolation_level, read_only)
+
+    @pytest.mark.asyncio
     async def test_connection(self, async_connection: dbapi.AsyncConnection):
         await util.greenlet_spawn(self._test_connection, async_connection)
 
+    @pytest.mark.asyncio
     async def test_cursor_raw_query(self, async_connection: dbapi.AsyncConnection):
         await util.greenlet_spawn(self._test_cursor_raw_query, async_connection)
 
+    @pytest.mark.asyncio
     async def test_errors(self, async_connection: dbapi.AsyncConnection):
         await util.greenlet_spawn(self._test_errors, async_connection)

@@ -57,7 +57,7 @@ class Connection:
         self.tx_context: Optional[ydb.TxContext] = None
 
     def cursor(self):
-        return self._cursor_class(self.session_pool, self.tx_context)
+        return self._cursor_class(self.session_pool, self.tx_mode, self.tx_context)
 
     def describe(self, table_path: str) -> ydb.TableDescription:
         abs_table_path = posixpath.join(self.database, table_path)
