@@ -76,9 +76,11 @@ class Cursor:
     def __init__(
         self,
         session_pool: Union[ydb.SessionPool, ydb.aio.SessionPool],
+        tx_mode: ydb.AbstractTransactionModeBuilder,
         tx_context: Optional[ydb.BaseTxContext] = None,
     ):
         self.session_pool = session_pool
+        self.tx_mode = tx_mode
         self.tx_context = tx_context
         self.description = None
         self.arraysize = 1
@@ -142,7 +144,7 @@ class Cursor:
         if self.tx_context:
             return self._run_operation_in_tx(self._execute_in_tx, prepared_query, parameters)
 
-        return self._retry_operation_in_pool(self._execute_in_session, prepared_query, parameters)
+        return self._retry_operation_in_pool(self._execute_in_session, self.tx_mode, prepared_query, parameters)
 
     @_handle_ydb_errors
     def _execute_ddl(self, query: str) -> ydb.convert.ResultSets:
@@ -176,9 +178,12 @@ class Cursor:
 
     @staticmethod
     def _execute_in_session(
-        session: ydb.Session, prepared_query: ydb.DataQuery, parameters: Optional[Mapping[str, Any]]
+        session: ydb.Session,
+        tx_mode: ydb.AbstractTransactionModeBuilder,
+        prepared_query: ydb.DataQuery,
+        parameters: Optional[Mapping[str, Any]],
     ) -> ydb.convert.ResultSets:
-        return session.transaction().execute(prepared_query, parameters, commit_tx=True)
+        return session.transaction(tx_mode).execute(prepared_query, parameters, commit_tx=True)
 
     def _run_operation_in_tx(self, callee: collections.abc.Callable, *args, **kwargs):
         return callee(self.tx_context, *args, **kwargs)
@@ -282,9 +287,12 @@ class AsyncCursor(Cursor):
 
     @staticmethod
     async def _execute_in_session(
-        session: ydb.aio.table.Session, prepared_query: ydb.DataQuery, parameters: Optional[Mapping[str, Any]]
+        session: ydb.aio.table.Session,
+        tx_mode: ydb.AbstractTransactionModeBuilder,
+        prepared_query: ydb.DataQuery,
+        parameters: Optional[Mapping[str, Any]],
     ) -> ydb.convert.ResultSets:
-        return await session.transaction().execute(prepared_query, parameters, commit_tx=True)
+        return await session.transaction(tx_mode).execute(prepared_query, parameters, commit_tx=True)
 
     def _run_operation_in_tx(self, callee: collections.abc.Coroutine, *args, **kwargs):
         return self._await(callee(self.tx_context, *args, **kwargs))
