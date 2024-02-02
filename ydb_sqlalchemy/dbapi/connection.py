@@ -162,7 +162,7 @@ class Connection:
         try:
             self._maybe_await(driver.wait, timeout=5, fail_fast=True)
         except ydb.Error as e:
-            raise InterfaceError(e.message, e.issues, e.status) from e
+            raise InterfaceError(e.message, original_error=e) from e
         except Exception as e:
             self._maybe_await(driver.stop)
             raise InterfaceError(f"Failed to connect to YDB, details {driver.discovery_debug_details()}") from e
