@@ -41,11 +41,11 @@ def _handle_ydb_errors(func):
         try:
             return func(*args, **kwargs)
         except (ydb.issues.AlreadyExists, ydb.issues.PreconditionFailed) as e:
-            raise IntegrityError(e.message, e.issues, e.status) from e
+            raise IntegrityError(e.message, original_error=e) from e
         except (ydb.issues.Unsupported, ydb.issues.Unimplemented) as e:
-            raise NotSupportedError(e.message, e.issues, e.status) from e
+            raise NotSupportedError(e.message, original_error=e) from e
         except (ydb.issues.BadRequest, ydb.issues.SchemeError) as e:
-            raise ProgrammingError(e.message, e.issues, e.status) from e
+            raise ProgrammingError(e.message, original_error=e) from e
         except (
             ydb.issues.TruncatedResponseError,
             ydb.issues.ConnectionError,
@@ -59,13 +59,13 @@ def _handle_ydb_errors(func):
             ydb.issues.SessionExpired,
             ydb.issues.SessionPoolEmpty,
         ) as e:
-            raise OperationalError(e.message, e.issues, e.status) from e
+            raise OperationalError(e.message, original_error=e) from e
         except ydb.issues.GenericError as e:
-            raise DataError(e.message, e.issues, e.status) from e
+            raise DataError(e.message, original_error=e) from e
         except ydb.issues.InternalError as e:
-            raise InternalError(e.message, e.issues, e.status) from e
+            raise InternalError(e.message, original_error=e) from e
         except ydb.Error as e:
-            raise DatabaseError(e.message, e.issues, e.status) from e
+            raise DatabaseError(e.message, original_error=e) from e
         except Exception as e:
             raise DatabaseError("Failed to execute query") from e
 
@@ -214,7 +214,7 @@ class Cursor:
                     #  of this PEP to return a sequence: https://www.python.org/dev/peps/pep-0249/#fetchmany
                     yield row[::]
         except ydb.Error as e:
-            raise DatabaseError(e.message, e.issues, e.status) from e
+            raise DatabaseError(e.message, original_error=e) from e
 
     def _ensure_prefetched(self):
         if self.rows is not None and self._rows_prefetched is None:
