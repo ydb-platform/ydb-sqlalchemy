@@ -245,6 +245,10 @@ class YqlCompiler(StrSQLCompiler):
         cast_to: Type[sa.types.TypeEngine],
         skip_types: Optional[Tuple[Type[sa.types.TypeEngine], ...]] = None,
     ) -> Any:
+        if not skip_types:
+            skip_types = (cast_to,)
+        if cast_to not in skip_types:
+            skip_types = (*skip_types, cast_to)
         if not hasattr(element, "type") or not isinstance(element.type, skip_types):
             return sa.Cast(element, cast_to)
         return element
