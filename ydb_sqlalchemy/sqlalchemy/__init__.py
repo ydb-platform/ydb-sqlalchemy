@@ -99,16 +99,16 @@ class YqlTypeCompiler(StrSQLTypeCompiler):
     def visit_uint8(self, type_: types.UInt8, **kw):
         return "UInt8"
 
-    def visit_int64(self, type_: types.UInt64, **kw):
+    def visit_int64(self, type_: types.Int64, **kw):
         return "Int64"
 
-    def visit_int32(self, type_: types.UInt32, **kw):
+    def visit_int32(self, type_: types.Int32, **kw):
         return "Int32"
 
-    def visit_int16(self, type_: types.UInt16, **kw):
+    def visit_int16(self, type_: types.Int16, **kw):
         return "Int16"
 
-    def visit_int8(self, type_: types.UInt8, **kw):
+    def visit_int8(self, type_: types.Int8, **kw):
         return "Int8"
 
     def visit_INTEGER(self, type_: sa.INTEGER, **kw):

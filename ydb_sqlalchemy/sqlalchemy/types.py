@@ -12,7 +12,7 @@ class UInt32(types.Integer):
 
 
 class UInt16(types.Integer):
-    __visit_name__ = "uint32"
+    __visit_name__ = "uint16"
 
 
 class UInt8(types.Integer):
