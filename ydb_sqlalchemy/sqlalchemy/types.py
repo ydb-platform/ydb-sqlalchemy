@@ -3,16 +3,36 @@ from sqlalchemy.sql import type_api
 from typing import Mapping, Any, Union, Type
 
 
-class UInt32(types.Integer):
-    __visit_name__ = "uint32"
-
-
 class UInt64(types.Integer):
     __visit_name__ = "uint64"
 
 
+class UInt32(types.Integer):
+    __visit_name__ = "uint32"
+
+
+class UInt16(types.Integer):
+    __visit_name__ = "uint32"
+
+
 class UInt8(types.Integer):
     __visit_name__ = "uint8"
+
+
+class Int64(types.Integer):
+    __visit_name__ = "int64"
+
+
+class Int32(types.Integer):
+    __visit_name__ = "int32"
+
+
+class Int16(types.Integer):
+    __visit_name__ = "int32"
+
+
+class Int8(types.Integer):
+    __visit_name__ = "int8"
 
 
 class ListType(ARRAY):
