@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import List, Optional
 
 import ydb
 from google.protobuf.message import Message
