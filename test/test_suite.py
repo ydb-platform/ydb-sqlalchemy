@@ -21,6 +21,7 @@ from sqlalchemy.testing.suite import (
     requirements,
     select,
     testing,
+    union,
 )
 from sqlalchemy.testing.suite.test_ddl import (
     LongNameBlowoutTest as _LongNameBlowoutTest,
