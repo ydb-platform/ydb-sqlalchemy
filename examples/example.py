@@ -1,11 +1,10 @@
 import datetime
 import logging
-import sqlalchemy as sa
-from sqlalchemy import orm, exc, sql
-from sqlalchemy import Table, Column, Integer, String, Float, TIMESTAMP
 
+import sqlalchemy as sa
 from fill_tables import fill_all_tables, to_days
-from models import Base, Series, Episodes
+from models import Base, Episodes, Series
+from sqlalchemy import TIMESTAMP, Column, Float, Integer, String, Table, exc, orm, sql
 
 
 def describe_table(engine, name):

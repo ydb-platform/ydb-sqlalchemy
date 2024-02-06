@@ -1,15 +1,27 @@
+from typing import Optional, List
+
+import ydb
+from google.protobuf.message import Message
+
+
 class Warning(Exception):
     pass
 
 
 class Error(Exception):
-    def __init__(self, message, issues=None, status=None):
+    def __init__(
+        self,
+        message: str,
+        original_error: Optional[ydb.Error] = None,
+    ):
         super(Error, self).__init__(message)
 
-        pretty_issues = _pretty_issues(issues)
-        self.issues = issues
-        self.message = pretty_issues or message
-        self.status = status
+        self.original_error = original_error
+        if original_error:
+            pretty_issues = _pretty_issues(original_error.issues)
+            self.issues = original_error.issues
+            self.message = pretty_issues or message
+            self.status = original_error.status
 
 
 class InterfaceError(Error):
@@ -44,7 +56,7 @@ class NotSupportedError(DatabaseError):
     pass
 
 
-def _pretty_issues(issues):
+def _pretty_issues(issues: List[Message]) -> str:
     if issues is None:
         return None
 
@@ -56,7 +68,7 @@ def _pretty_issues(issues):
     return "\n" + "\n".join(children_messages)
 
 
-def _get_messages(issue, max_depth=100, indent=2, depth=0, root=False):
+def _get_messages(issue: Message, max_depth: int = 100, indent: int = 2, depth: int = 0, root: bool = False) -> str:
     if depth >= max_depth:
         return None
 

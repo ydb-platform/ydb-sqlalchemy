@@ -1,7 +1,6 @@
 import iso8601
-
 import sqlalchemy as sa
-from models import Base, Series, Seasons, Episodes
+from models import Base, Episodes, Seasons, Series
 
 
 def to_days(date):

@@ -1,18 +1,22 @@
+import collections.abc
 import dataclasses
+import functools
 import itertools
 import logging
-from typing import Any, Mapping, Optional, Sequence, Union, Dict, Callable
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Union
 
 import ydb
+import ydb.aio
+from sqlalchemy import util
 
 from .errors import (
-    InternalError,
-    IntegrityError,
-    DataError,
     DatabaseError,
-    ProgrammingError,
-    OperationalError,
+    DataError,
+    IntegrityError,
+    InternalError,
     NotSupportedError,
+    OperationalError,
+    ProgrammingError,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,18 +35,73 @@ class YdbQuery:
     is_ddl: bool = False
 
 
-class Cursor(object):
+def _handle_ydb_errors(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except (ydb.issues.AlreadyExists, ydb.issues.PreconditionFailed) as e:
+            raise IntegrityError(e.message, original_error=e) from e
+        except (ydb.issues.Unsupported, ydb.issues.Unimplemented) as e:
+            raise NotSupportedError(e.message, original_error=e) from e
+        except (ydb.issues.BadRequest, ydb.issues.SchemeError) as e:
+            raise ProgrammingError(e.message, original_error=e) from e
+        except (
+            ydb.issues.TruncatedResponseError,
+            ydb.issues.ConnectionError,
+            ydb.issues.Aborted,
+            ydb.issues.Unavailable,
+            ydb.issues.Overloaded,
+            ydb.issues.Undetermined,
+            ydb.issues.Timeout,
+            ydb.issues.Cancelled,
+            ydb.issues.SessionBusy,
+            ydb.issues.SessionExpired,
+            ydb.issues.SessionPoolEmpty,
+        ) as e:
+            raise OperationalError(e.message, original_error=e) from e
+        except ydb.issues.GenericError as e:
+            raise DataError(e.message, original_error=e) from e
+        except ydb.issues.InternalError as e:
+            raise InternalError(e.message, original_error=e) from e
+        except ydb.Error as e:
+            raise DatabaseError(e.message, original_error=e) from e
+        except Exception as e:
+            raise DatabaseError("Failed to execute query") from e
+
+    return wrapper
+
+
+class Cursor:
     def __init__(
         self,
-        session_pool: ydb.SessionPool,
+        session_pool: Union[ydb.SessionPool, ydb.aio.SessionPool],
+        tx_mode: ydb.AbstractTransactionModeBuilder,
         tx_context: Optional[ydb.BaseTxContext] = None,
     ):
         self.session_pool = session_pool
+        self.tx_mode = tx_mode
         self.tx_context = tx_context
         self.description = None
         self.arraysize = 1
         self.rows = None
         self._rows_prefetched = None
+
+    @_handle_ydb_errors
+    def describe_table(self, abs_table_path: str) -> ydb.TableDescription:
+        return self._retry_operation_in_pool(self._describe_table, abs_table_path)
+
+    def check_exists(self, table_path: str) -> bool:
+        try:
+            self._retry_operation_in_pool(self._describe_path, table_path)
+            return True
+        except ydb.SchemeError:
+            return False
+
+    @_handle_ydb_errors
+    def get_table_names(self) -> List[str]:
+        directory: ydb.Directory = self._retry_operation_in_pool(self._list_directory)
+        return [child.name for child in directory.children if child.is_table()]
 
     def execute(self, operation: YdbQuery, parameters: Optional[Mapping[str, Any]] = None):
         if operation.is_ddl or not operation.parameters_types:
@@ -54,12 +113,9 @@ class Cursor(object):
 
         logger.info("execute sql: %s, params: %s", query, parameters)
         if is_ddl:
-            chunks = self.session_pool.retry_operation_sync(self._execute_ddl, None, query)
+            chunks = self._execute_ddl(query)
         else:
-            if self.tx_context:
-                chunks = self._execute_dml(self.tx_context.session, query, parameters, self.tx_context)
-            else:
-                chunks = self.session_pool.retry_operation_sync(self._execute_dml, None, query, parameters)
+            chunks = self._execute_dml(query, parameters)
 
         rows = self._rows_iterable(chunks)
         # Prefetch the description:
@@ -74,57 +130,69 @@ class Cursor(object):
 
         self.rows = rows
 
-    @classmethod
+    @_handle_ydb_errors
     def _execute_dml(
-        cls,
-        session: ydb.Session,
-        query: ydb.DataQuery,
-        parameters: Optional[Mapping[str, Any]] = None,
-        tx_context: Optional[ydb.BaseTxContext] = None,
+        self, query: Union[ydb.DataQuery, str], parameters: Optional[Mapping[str, Any]] = None
     ) -> ydb.convert.ResultSets:
         prepared_query = query
         if isinstance(query, str) and parameters:
-            prepared_query = session.prepare(query)
+            if self.tx_context:
+                prepared_query = self._run_operation_in_session(self._prepare, query)
+            else:
+                prepared_query = self._retry_operation_in_pool(self._prepare, query)
 
-        if tx_context:
-            return cls._handle_ydb_errors(tx_context.execute, prepared_query, parameters)
+        if self.tx_context:
+            return self._run_operation_in_tx(self._execute_in_tx, prepared_query, parameters)
 
-        return cls._handle_ydb_errors(session.transaction().execute, prepared_query, parameters, commit_tx=True)
+        return self._retry_operation_in_pool(self._execute_in_session, self.tx_mode, prepared_query, parameters)
 
-    @classmethod
-    def _execute_ddl(cls, session: ydb.Session, query: str) -> ydb.convert.ResultSets:
-        return cls._handle_ydb_errors(session.execute_scheme, query)
+    @_handle_ydb_errors
+    def _execute_ddl(self, query: str) -> ydb.convert.ResultSets:
+        return self._retry_operation_in_pool(self._execute_scheme, query)
 
     @staticmethod
-    def _handle_ydb_errors(callee: Callable, *args, **kwargs) -> Any:
-        try:
-            return callee(*args, **kwargs)
-        except (ydb.issues.AlreadyExists, ydb.issues.PreconditionFailed) as e:
-            raise IntegrityError(e.message, e.issues, e.status) from e
-        except (ydb.issues.Unsupported, ydb.issues.Unimplemented) as e:
-            raise NotSupportedError(e.message, e.issues, e.status) from e
-        except (ydb.issues.BadRequest, ydb.issues.SchemeError) as e:
-            raise ProgrammingError(e.message, e.issues, e.status) from e
-        except (
-            ydb.issues.TruncatedResponseError,
-            ydb.issues.ConnectionError,
-            ydb.issues.Aborted,
-            ydb.issues.Unavailable,
-            ydb.issues.Overloaded,
-            ydb.issues.Undetermined,
-            ydb.issues.Timeout,
-            ydb.issues.Cancelled,
-            ydb.issues.SessionBusy,
-            ydb.issues.SessionExpired,
-            ydb.issues.SessionPoolEmpty,
-        ) as e:
-            raise OperationalError(e.message, e.issues, e.status) from e
-        except ydb.issues.GenericError as e:
-            raise DataError(e.message, e.issues, e.status) from e
-        except ydb.issues.InternalError as e:
-            raise InternalError(e.message, e.issues, e.status) from e
-        except ydb.Error as e:
-            raise DatabaseError(e.message, e.issues, e.status) from e
+    def _execute_scheme(session: ydb.Session, query: str) -> ydb.convert.ResultSets:
+        return session.execute_scheme(query)
+
+    @staticmethod
+    def _describe_table(session: ydb.Session, abs_table_path: str) -> ydb.TableDescription:
+        return session.describe_table(abs_table_path)
+
+    @staticmethod
+    def _describe_path(session: ydb.Session, table_path: str) -> ydb.SchemeEntry:
+        return session._driver.scheme_client.describe_path(table_path)
+
+    @staticmethod
+    def _list_directory(session: ydb.Session) -> ydb.Directory:
+        return session._driver.scheme_client.list_directory(session._driver._driver_config.database)
+
+    @staticmethod
+    def _prepare(session: ydb.Session, query: str) -> ydb.DataQuery:
+        return session.prepare(query)
+
+    @staticmethod
+    def _execute_in_tx(
+        tx_context: ydb.TxContext, prepared_query: ydb.DataQuery, parameters: Optional[Mapping[str, Any]]
+    ) -> ydb.convert.ResultSets:
+        return tx_context.execute(prepared_query, parameters, commit_tx=False)
+
+    @staticmethod
+    def _execute_in_session(
+        session: ydb.Session,
+        tx_mode: ydb.AbstractTransactionModeBuilder,
+        prepared_query: ydb.DataQuery,
+        parameters: Optional[Mapping[str, Any]],
+    ) -> ydb.convert.ResultSets:
+        return session.transaction(tx_mode).execute(prepared_query, parameters, commit_tx=True)
+
+    def _run_operation_in_tx(self, callee: collections.abc.Callable, *args, **kwargs):
+        return callee(self.tx_context, *args, **kwargs)
+
+    def _run_operation_in_session(self, callee: collections.abc.Callable, *args, **kwargs):
+        return callee(self.tx_context.session, *args, **kwargs)
+
+    def _retry_operation_in_pool(self, callee: collections.abc.Callable, *args, **kwargs):
+        return self.session_pool.retry_operation_sync(callee, None, *args, **kwargs)
 
     def _rows_iterable(self, chunks_iterable: ydb.convert.ResultSets):
         try:
@@ -146,7 +214,7 @@ class Cursor(object):
                     #  of this PEP to return a sequence: https://www.python.org/dev/peps/pep-0249/#fetchmany
                     yield row[::]
         except ydb.Error as e:
-            raise DatabaseError(e.message, e.issues, e.status) from e
+            raise DatabaseError(e.message, original_error=e) from e
 
     def _ensure_prefetched(self):
         if self.rows is not None and self._rows_prefetched is None:
@@ -186,3 +254,51 @@ class Cursor(object):
     @property
     def rowcount(self):
         return len(self._ensure_prefetched())
+
+
+class AsyncCursor(Cursor):
+    _await = staticmethod(util.await_only)
+
+    @staticmethod
+    async def _describe_table(session: ydb.aio.table.Session, abs_table_path: str) -> ydb.TableDescription:
+        return await session.describe_table(abs_table_path)
+
+    @staticmethod
+    async def _describe_path(session: ydb.aio.table.Session, table_path: str) -> ydb.SchemeEntry:
+        return await session._driver.scheme_client.describe_path(table_path)
+
+    @staticmethod
+    async def _list_directory(session: ydb.aio.table.Session) -> ydb.Directory:
+        return await session._driver.scheme_client.list_directory(session._driver._driver_config.database)
+
+    @staticmethod
+    async def _execute_scheme(session: ydb.aio.table.Session, query: str) -> ydb.convert.ResultSets:
+        return await session.execute_scheme(query)
+
+    @staticmethod
+    async def _prepare(session: ydb.aio.table.Session, query: str) -> ydb.DataQuery:
+        return await session.prepare(query)
+
+    @staticmethod
+    async def _execute_in_tx(
+        tx_context: ydb.aio.table.TxContext, prepared_query: ydb.DataQuery, parameters: Optional[Mapping[str, Any]]
+    ) -> ydb.convert.ResultSets:
+        return await tx_context.execute(prepared_query, parameters, commit_tx=False)
+
+    @staticmethod
+    async def _execute_in_session(
+        session: ydb.aio.table.Session,
+        tx_mode: ydb.AbstractTransactionModeBuilder,
+        prepared_query: ydb.DataQuery,
+        parameters: Optional[Mapping[str, Any]],
+    ) -> ydb.convert.ResultSets:
+        return await session.transaction(tx_mode).execute(prepared_query, parameters, commit_tx=True)
+
+    def _run_operation_in_tx(self, callee: collections.abc.Coroutine, *args, **kwargs):
+        return self._await(callee(self.tx_context, *args, **kwargs))
+
+    def _run_operation_in_session(self, callee: collections.abc.Coroutine, *args, **kwargs):
+        return self._await(callee(self.tx_context.session, *args, **kwargs))
+
+    def _retry_operation_in_pool(self, callee: collections.abc.Coroutine, *args, **kwargs):
+        return self._await(self.session_pool.retry_operation(callee, *args, **kwargs))

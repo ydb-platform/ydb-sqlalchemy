@@ -4,27 +4,27 @@ Work in progress, breaking changes are possible.
 """
 import collections
 import collections.abc
-import ydb
-import ydb_sqlalchemy.dbapi as dbapi
-from ydb_sqlalchemy.dbapi.constants import YDB_KEYWORDS
-from ydb_sqlalchemy.sqlalchemy.dml import Upsert
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
 import sqlalchemy as sa
+import ydb
+from sqlalchemy.engine import reflection
+from sqlalchemy.engine.default import DefaultExecutionContext, StrCompileDialect
 from sqlalchemy.exc import CompileError, NoSuchTableError
 from sqlalchemy.sql import functions, literal_column
 from sqlalchemy.sql.compiler import (
-    selectable,
-    IdentifierPreparer,
-    StrSQLTypeCompiler,
-    StrSQLCompiler,
     DDLCompiler,
+    IdentifierPreparer,
+    StrSQLCompiler,
+    StrSQLTypeCompiler,
+    selectable,
 )
 from sqlalchemy.sql.elements import ClauseList
-from sqlalchemy.engine import reflection
-from sqlalchemy.engine.default import StrCompileDialect, DefaultExecutionContext
 from sqlalchemy.util.compat import inspect_getfullargspec
 
-from typing import Any, Union, Mapping, Sequence, Optional, Tuple, List, Dict
+import ydb_sqlalchemy.dbapi as dbapi
+from ydb_sqlalchemy.dbapi.constants import YDB_KEYWORDS
+from ydb_sqlalchemy.sqlalchemy.dml import Upsert
 
 from . import types
 
@@ -479,7 +479,7 @@ class YqlDialect(StrCompileDialect):
 
     @classmethod
     def import_dbapi(cls: Any):
-        return dbapi
+        return dbapi.YdbDBApi()
 
     def _describe_table(self, connection, table_name, schema=None):
         if schema is not None:
@@ -510,15 +510,12 @@ class YqlDialect(StrCompileDialect):
         return as_compatible
 
     @reflection.cache
-    def get_table_names(self, connection, schema=None, **kw):
+    def get_table_names(self, connection, schema=None, **kw) -> List[str]:
         if schema:
             raise dbapi.NotSupportedError("unsupported on non empty schema")
 
-        driver = connection.connection.driver_connection.driver
-        db_path = driver._driver_config.database
-        children = driver.scheme_client.list_directory(db_path).children
-
-        return [child.name for child in children if child.is_table()]
+        raw_conn = connection.connection
+        return raw_conn.get_table_names()
 
     @reflection.cache
     def has_table(self, connection, table_name, schema=None, **kwargs):
@@ -551,6 +548,9 @@ class YqlDialect(StrCompileDialect):
 
     def get_isolation_level(self, dbapi_connection: dbapi.Connection) -> str:
         return dbapi_connection.get_isolation_level()
+
+    def connect(self, *cargs, **cparams):
+        return self.loaded_dbapi.connect(*cargs, **cparams)
 
     def do_begin(self, dbapi_connection: dbapi.Connection) -> None:
         dbapi_connection.begin()
@@ -634,3 +634,12 @@ class YqlDialect(StrCompileDialect):
     ) -> None:
         operation, parameters = self._make_ydb_operation(statement, context, parameters, execute_many=False)
         cursor.execute(operation, parameters)
+
+
+class AsyncYqlDialect(YqlDialect):
+    driver = "ydb_async"
+    is_async = True
+    supports_statement_cache = False
+
+    def connect(self, *cargs, **cparams):
+        return self.loaded_dbapi.async_connect(*cargs, **cparams)
