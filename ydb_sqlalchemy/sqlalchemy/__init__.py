@@ -4,7 +4,7 @@ Work in progress, breaking changes are possible.
 """
 import collections
 import collections.abc
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Type, Union
 
 import sqlalchemy as sa
 import ydb
@@ -87,14 +87,29 @@ class YqlTypeCompiler(StrSQLTypeCompiler):
     def visit_BOOLEAN(self, type_: sa.BOOLEAN, **kw):
         return "BOOL"
 
-    def visit_uint32(self, type_: types.UInt32, **kw):
-        return "UInt32"
-
     def visit_uint64(self, type_: types.UInt64, **kw):
         return "UInt64"
 
+    def visit_uint32(self, type_: types.UInt32, **kw):
+        return "UInt32"
+
+    def visit_uint16(self, type_: types.UInt16, **kw):
+        return "UInt16"
+
     def visit_uint8(self, type_: types.UInt8, **kw):
         return "UInt8"
+
+    def visit_int64(self, type_: types.Int64, **kw):
+        return "Int64"
+
+    def visit_int32(self, type_: types.Int32, **kw):
+        return "Int32"
+
+    def visit_int16(self, type_: types.Int16, **kw):
+        return "Int16"
+
+    def visit_int8(self, type_: types.Int8, **kw):
+        return "Int8"
 
     def visit_INTEGER(self, type_: sa.INTEGER, **kw):
         return "Int64"
@@ -134,8 +149,28 @@ class YqlTypeCompiler(StrSQLTypeCompiler):
 
         if isinstance(type_, (sa.Text, sa.String, sa.Uuid)):
             ydb_type = ydb.PrimitiveType.Utf8
+
+        # Integers
+        elif isinstance(type_, types.UInt64):
+            ydb_type = ydb.PrimitiveType.Uint64
+        elif isinstance(type_, types.UInt32):
+            ydb_type = ydb.PrimitiveType.Uint32
+        elif isinstance(type_, types.UInt16):
+            ydb_type = ydb.PrimitiveType.Uint16
+        elif isinstance(type_, types.UInt8):
+            ydb_type = ydb.PrimitiveType.Uint8
+        elif isinstance(type_, types.Int64):
+            ydb_type = ydb.PrimitiveType.Int64
+        elif isinstance(type_, types.Int32):
+            ydb_type = ydb.PrimitiveType.Int32
+        elif isinstance(type_, types.Int16):
+            ydb_type = ydb.PrimitiveType.Int16
+        elif isinstance(type_, types.Int8):
+            ydb_type = ydb.PrimitiveType.Int8
         elif isinstance(type_, sa.Integer):
             ydb_type = ydb.PrimitiveType.Int64
+        # Integers
+
         elif isinstance(type_, sa.JSON):
             ydb_type = ydb.PrimitiveType.Json
         elif isinstance(type_, sa.DateTime):
@@ -187,6 +222,36 @@ class YqlCompiler(StrSQLCompiler):
         # Hack to ensure it is possible to define labels in groupby.
         kw.update(within_columns_clause=True)
         return super(YqlCompiler, self).group_by_clause(select, **kw)
+
+    def limit_clause(self, select, **kw):
+        text = ""
+        if select._limit_clause is not None:
+            limit_clause = self._maybe_cast(
+                select._limit_clause, types.UInt64, skip_types=(types.UInt64, types.UInt32, types.UInt16, types.UInt8)
+            )
+            text += "\n LIMIT " + self.process(limit_clause, **kw)
+        if select._offset_clause is not None:
+            offset_clause = self._maybe_cast(
+                select._offset_clause, types.UInt64, skip_types=(types.UInt64, types.UInt32, types.UInt16, types.UInt8)
+            )
+            if select._limit_clause is None:
+                text += "\n LIMIT NULL"
+            text += " OFFSET " + self.process(offset_clause, **kw)
+        return text
+
+    def _maybe_cast(
+        self,
+        element: Any,
+        cast_to: Type[sa.types.TypeEngine],
+        skip_types: Optional[Tuple[Type[sa.types.TypeEngine], ...]] = None,
+    ) -> Any:
+        if not skip_types:
+            skip_types = (cast_to,)
+        if cast_to not in skip_types:
+            skip_types = (*skip_types, cast_to)
+        if not hasattr(element, "type") or not isinstance(element.type, skip_types):
+            return sa.Cast(element, cast_to)
+        return element
 
     def render_literal_value(self, value, type_):
         if isinstance(value, str):
@@ -277,16 +342,14 @@ class YqlCompiler(StrSQLCompiler):
     def _guess_bound_variable_type_by_parameters(
         self, bind: sa.BindParameter, post_compile_bind_values: list
     ) -> Optional[sa.types.TypeEngine]:
-        if not bind.expanding:
-            if isinstance(bind.type, sa.types.NullType):
-                return None
-            bind_type = bind.type
-        else:
+        bind_type = bind.type
+        if bind.expanding or (isinstance(bind.type, sa.types.NullType) and post_compile_bind_values):
             not_null_values = [v for v in post_compile_bind_values if v is not None]
             if not_null_values:
                 bind_type = sa.BindParameter("", not_null_values[0]).type
-            else:
-                return None
+
+        if isinstance(bind_type, sa.types.NullType):
+            return None
 
         return bind_type
 

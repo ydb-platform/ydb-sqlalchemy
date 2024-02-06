@@ -21,12 +21,10 @@ from sqlalchemy.testing.suite import (
     requirements,
     select,
     testing,
+    union,
 )
 from sqlalchemy.testing.suite.test_ddl import (
     LongNameBlowoutTest as _LongNameBlowoutTest,
-)
-from sqlalchemy.testing.suite.test_deprecations import (
-    DeprecatedCompoundSelectTest as _DeprecatedCompoundSelectTest,
 )
 from sqlalchemy.testing.suite.test_dialect import (
     DifficultParametersTest as _DifficultParametersTest,
@@ -50,9 +48,6 @@ from sqlalchemy.testing.suite.test_reflection import (
     QuotedNameArgumentTest as _QuotedNameArgumentTest,
 )
 from sqlalchemy.testing.suite.test_results import RowFetchTest as _RowFetchTest
-from sqlalchemy.testing.suite.test_select import (
-    CompoundSelectTest as _CompoundSelectTest,
-)
 from sqlalchemy.testing.suite.test_select import ExistsTest as _ExistsTest
 from sqlalchemy.testing.suite.test_select import (
     FetchLimitOffsetTest as _FetchLimitOffsetTest,
@@ -325,20 +320,6 @@ class LikeFunctionsTest(_LikeFunctionsTest):
         self._test(~col.regexp_match("a.cde"), {2, 3, 4, 7, 8, 10, 11})
 
 
-class CompoundSelectTest(_CompoundSelectTest):
-    @pytest.mark.skip("limit don't work")
-    def test_distinct_selectable_in_unions(self):
-        pass
-
-    @pytest.mark.skip("limit don't work")
-    def test_limit_offset_in_unions_from_alias(self):
-        pass
-
-    @pytest.mark.skip("limit don't work")
-    def test_limit_offset_aliased_selectable_in_unions(self):
-        pass
-
-
 class EscapingTest(_EscapingTest):
     @provide_metadata
     def test_percent_sign_round_trip(self):
@@ -395,45 +376,23 @@ class OrderByLabelTest(_OrderByLabelTest):
 
 
 class FetchLimitOffsetTest(_FetchLimitOffsetTest):
-    @pytest.mark.skip("Failed to convert type: Int64 to Uint64")
-    def test_bound_limit(self, connection):
-        pass
-
-    @pytest.mark.skip("Failed to convert type: Int64 to Uint64")
-    def test_bound_limit_offset(self, connection):
-        pass
-
-    @pytest.mark.skip("Failed to convert type: Int64 to Uint64")
-    def test_bound_offset(self, connection):
-        pass
-
-    @pytest.mark.skip("Failed to convert type: Int64 to Uint64")
-    def test_expr_limit_simple_offset(self, connection):
-        pass
-
-    @pytest.mark.skip("Failed to convert type: Int64 to Uint64")
     def test_limit_render_multiple_times(self, connection):
-        pass
+        """
+        YQL does not support scalar subquery, so test was refiled with simple subquery
+        """
+        table = self.tables.some_table
+        stmt = select(table.c.id).limit(1).subquery()
 
-    @pytest.mark.skip("Failed to convert type: Int64 to Uint64")
-    def test_simple_limit(self, connection):
-        pass
+        u = union(select(stmt), select(stmt)).subquery().select()
 
-    @pytest.mark.skip("Failed to convert type: Int64 to Uint64")
-    def test_simple_limit_offset(self, connection):
-        pass
-
-    @pytest.mark.skip("Failed to convert type: Int64 to Uint64")
-    def test_simple_offset(self, connection):
-        pass
-
-    @pytest.mark.skip("Failed to convert type: Int64 to Uint64")
-    def test_simple_offset_zero(self, connection):
-        pass
-
-    @pytest.mark.skip("Failed to convert type: Int64 to Uint64")
-    def test_simple_limit_expr_offset(self, connection):
-        pass
+        self._assert_result(
+            connection,
+            u,
+            [
+                (1,),
+                (1,),
+            ],
+        )
 
 
 class InsertBehaviorTest(_InsertBehaviorTest):
@@ -570,8 +529,3 @@ class RowFetchTest(_RowFetchTest):
     @pytest.mark.skip("scalar subquery unsupported")
     def test_row_w_scalar_select(self, connection):
         pass
-
-
-@pytest.mark.skip("TODO: try it after limit/offset tests would fixed")
-class DeprecatedCompoundSelectTest(_DeprecatedCompoundSelectTest):
-    pass

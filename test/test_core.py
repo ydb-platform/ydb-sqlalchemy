@@ -216,6 +216,21 @@ class TestTypes(TablesTest):
         row = connection.execute(sa.select(tb)).fetchone()
         assert row == (1, "Hello World!", 3.5, True, now, today)
 
+    def test_integer_types(self, connection):
+        stmt = sa.Select(
+            sa.func.FormatType(sa.func.TypeOf(sa.bindparam("p_uint8", 8, types.UInt8))),
+            sa.func.FormatType(sa.func.TypeOf(sa.bindparam("p_uint16", 16, types.UInt16))),
+            sa.func.FormatType(sa.func.TypeOf(sa.bindparam("p_uint32", 32, types.UInt32))),
+            sa.func.FormatType(sa.func.TypeOf(sa.bindparam("p_uint64", 64, types.UInt64))),
+            sa.func.FormatType(sa.func.TypeOf(sa.bindparam("p_int8", -8, types.Int8))),
+            sa.func.FormatType(sa.func.TypeOf(sa.bindparam("p_int16", -16, types.Int16))),
+            sa.func.FormatType(sa.func.TypeOf(sa.bindparam("p_int32", -32, types.Int32))),
+            sa.func.FormatType(sa.func.TypeOf(sa.bindparam("p_int64", -64, types.Int64))),
+        )
+
+        result = connection.execute(stmt).fetchone()
+        assert result == (b"Uint8", b"Uint16", b"Uint32", b"Uint64", b"Int8", b"Int16", b"Int32", b"Int64")
+
 
 class TestWithClause(TablesTest):
     __backend__ = True
