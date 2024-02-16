@@ -2,6 +2,7 @@
 Experimental
 Work in progress, breaking changes are possible.
 """
+
 import collections
 import collections.abc
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Type, Union
@@ -63,6 +64,9 @@ class YqlIdentifierPreparer(IdentifierPreparer):
 
 
 class YqlTypeCompiler(StrSQLTypeCompiler):
+    def visit_JSON(self, type_: Union[sa.JSON, types.YqlJSON], **kw):
+        return "JSON"
+
     def visit_CHAR(self, type_: sa.CHAR, **kw):
         return "UTF8"
 
@@ -171,8 +175,21 @@ class YqlTypeCompiler(StrSQLTypeCompiler):
             ydb_type = ydb.PrimitiveType.Int64
         # Integers
 
+        # Json
         elif isinstance(type_, sa.JSON):
             ydb_type = ydb.PrimitiveType.Json
+        elif isinstance(type_, sa.JSON.JSONStrIndexType):
+            ydb_type = ydb.PrimitiveType.Utf8
+        elif isinstance(type_, sa.JSON.JSONIntIndexType):
+            ydb_type = ydb.PrimitiveType.Int64
+        elif isinstance(type_, sa.JSON.JSONPathType):
+            ydb_type = ydb.PrimitiveType.Utf8
+        elif isinstance(type_, types.YqlJSON):
+            ydb_type = ydb.PrimitiveType.Json
+        elif isinstance(type_, types.YqlJSON.YqlJSONPathType):
+            ydb_type = ydb.PrimitiveType.Utf8
+        # Json
+
         elif isinstance(type_, sa.DateTime):
             ydb_type = ydb.PrimitiveType.Timestamp
         elif isinstance(type_, sa.Date):
@@ -326,6 +343,24 @@ class YqlCompiler(StrSQLCompiler):
             + [name]
         ) % {"expr": self.function_argspec(func, **kwargs)}
 
+    def _yson_convert_to(self, statement: str, target_type: sa.types.TypeEngine) -> str:
+        type_name = target_type.compile(self.dialect)
+        if isinstance(target_type, sa.Numeric) and not isinstance(target_type, (sa.Float, sa.Double)):
+            # Since Decimal is stored in JSON either as String or as Float
+            string_value = f"Yson::ConvertTo({statement}, Optional<String>, Yson::Options(true AS AutoConvert))"
+            return f"CAST({string_value} AS Optional<{type_name}>)"
+        return f"Yson::ConvertTo({statement}, Optional<{type_name}>)"
+
+    def visit_json_getitem_op_binary(self, binary: sa.BinaryExpression, operator, **kw) -> str:
+        json_field = self.process(binary.left, **kw)
+        index = self.process(binary.right, **kw)
+        return self._yson_convert_to(f"{json_field}[{index}]", binary.type)
+
+    def visit_json_path_getitem_op_binary(self, binary: sa.BinaryExpression, operator, **kw) -> str:
+        json_field = self.process(binary.left, **kw)
+        path = self.process(binary.right, **kw)
+        return self._yson_convert_to(f"Yson::YPath({json_field}, {path})", binary.type)
+
     def visit_regexp_match_op_binary(self, binary, operator, **kw):
         return self._generate_generic_binary(binary, " REGEXP ", **kw)
 
@@ -336,7 +371,7 @@ class YqlCompiler(StrSQLCompiler):
         if bind_name in self.column_keys and hasattr(self.compile_state, "dml_table"):
             if bind_name in self.compile_state.dml_table.c:
                 column = self.compile_state.dml_table.c[bind_name]
-                return not column.primary_key
+                return column.nullable and not column.primary_key
         return False
 
     def _guess_bound_variable_type_by_parameters(
@@ -503,6 +538,7 @@ class YqlDialect(StrCompileDialect):
     supports_smallserial = False
     supports_schemas = False
     supports_constraint_comments = False
+    supports_json_type = True
 
     insert_returning = False
     update_returning = False
@@ -524,6 +560,10 @@ class YqlDialect(StrCompileDialect):
     statement_compiler = YqlCompiler
     ddl_compiler = YqlDDLCompiler
     type_compiler = YqlTypeCompiler
+    colspecs = {
+        sa.types.JSON: types.YqlJSON,
+        sa.types.JSON.JSONPathType: types.YqlJSON.YqlJSONPathType,
+    }
 
     construct_arguments = [
         (
@@ -543,6 +583,12 @@ class YqlDialect(StrCompileDialect):
     @classmethod
     def import_dbapi(cls: Any):
         return dbapi.YdbDBApi()
+
+    def __init__(self, json_serializer=None, json_deserializer=None, **kwargs):
+        super().__init__(**kwargs)
+
+        self._json_deserializer = json_deserializer
+        self._json_serializer = json_serializer
 
     def _describe_table(self, connection, table_name, schema=None):
         if schema is not None:
