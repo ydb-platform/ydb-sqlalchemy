@@ -149,7 +149,7 @@ class Connection:
             .with_native_datetime_in_result_sets(True)
             .with_native_timestamp_in_result_sets(True)
             .with_native_interval_in_result_sets(True)
-            .with_native_json_in_result_sets(True)
+            .with_native_json_in_result_sets(False)
         )
 
     def _create_driver(self):

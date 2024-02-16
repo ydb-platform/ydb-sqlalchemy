@@ -4,6 +4,10 @@ from sqlalchemy.testing.requirements import SuiteRequirements
 
 class Requirements(SuiteRequirements):
     @property
+    def json_type(self):
+        return exclusions.open()
+
+    @property
     def array_type(self):
         return exclusions.closed()
 

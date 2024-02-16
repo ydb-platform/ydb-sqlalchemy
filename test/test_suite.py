@@ -1,3 +1,5 @@
+import ctypes
+
 import pytest
 import sqlalchemy as sa
 import sqlalchemy.testing.suite.test_types
@@ -65,6 +67,7 @@ from sqlalchemy.testing.suite.test_types import (
 )
 from sqlalchemy.testing.suite.test_types import DateTimeTest as _DateTimeTest
 from sqlalchemy.testing.suite.test_types import IntegerTest as _IntegerTest
+from sqlalchemy.testing.suite.test_types import JSONTest as _JSONTest
 from sqlalchemy.testing.suite.test_types import NativeUUIDTest as _NativeUUIDTest
 from sqlalchemy.testing.suite.test_types import NumericTest as _NumericTest
 from sqlalchemy.testing.suite.test_types import StringTest as _StringTest
@@ -428,6 +431,25 @@ class TimestampMicrosecondsTest(_TimestampMicrosecondsTest):
 @pytest.mark.skip("unsupported Time data type")
 class TimeTest(_TimeTest):
     pass
+
+
+class JSONTest(_JSONTest):
+    @classmethod
+    def define_tables(cls, metadata):
+        Table(
+            "data_table",
+            metadata,
+            Column("id", Integer, primary_key=True, default=1),
+            Column("name", String(30), primary_key=True, nullable=False),
+            Column("data", cls.datatype, nullable=False),
+            Column("nulldata", cls.datatype(none_as_null=True)),
+        )
+
+    def _json_value_insert(self, connection, datatype, value, data_element):
+        if datatype == "float" and value is not None:
+            # As python's float is stored as C double, it needs to be shrank
+            value = ctypes.c_float(value).value
+        return super()._json_value_insert(connection, datatype, value, data_element)
 
 
 class StringTest(_StringTest):

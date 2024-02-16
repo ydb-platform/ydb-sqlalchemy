@@ -3,6 +3,8 @@ from typing import Any, Mapping, Type, Union
 from sqlalchemy import ARRAY, ColumnElement, exc, types
 from sqlalchemy.sql import type_api
 
+from .json import YqlJSON  # noqa: F401
+
 
 class UInt64(types.Integer):
     __visit_name__ = "uint64"
