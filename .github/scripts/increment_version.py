@@ -6,7 +6,7 @@ from packaging.version import Version
 
 SETUP_PY_PATH = "setup.py"
 DEFAULT_CHANGELOG_PATH = "CHANGELOG.md"
-DEFAULT_YDB_VERSION_FILE = "ydb/ydb_version.py"
+DEFAULT_YDB_VERSION_FILE = "ydb_sqlalchemy/_version.py"
 MARKER = "# AUTOVERSION"
 
 
