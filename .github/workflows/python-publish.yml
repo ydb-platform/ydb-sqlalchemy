@@ -34,6 +34,9 @@ jobs:
       CHANGELOG_FILE: CHANGELOG.md
       SETUP_PY_PATH: setup.py
 
+    permissions:
+      id-token: write  # IMPORTANT: this permission is mandatory for trusted publishing
+
     runs-on: ubuntu-latest
 
     steps:
@@ -107,7 +110,7 @@ jobs:
         fi;
 
     - name: Publish package
-      uses: pypa/gh-action-pypi-publish@27b31702a0e7fc50959f5ad993c78deac1bdfc29
+      uses: pypa/gh-action-pypi-publish@release/v1.8
       with:
         user: __token__
         password: ${{ secrets.PYPI_API_TOKEN }}
