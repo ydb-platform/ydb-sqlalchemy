@@ -33,9 +33,9 @@ jobs:
       CHANGELOG_FILE: CHANGELOG.md
       SETUP_PY_PATH: setup.py
 
-#    permissions:
-#      contents: write
-#      id-token: write  # IMPORTANT: this permission is mandatory for trusted publishing
+    permissions:
+      contents: write
+      id-token: write  # IMPORTANT: this permission is mandatory for trusted publishing
 
     runs-on: ubuntu-latest
 
