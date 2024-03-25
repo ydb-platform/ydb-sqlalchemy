@@ -41,6 +41,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
+      with:
+        token: ${{ secrets.YDB_PLATFORM_BOT_TOKEN_REPO }}
 
     - name: Set up Python
       uses: actions/setup-python@v3
