@@ -1,5 +1,7 @@
+* test release
+
 ## 0.0.1b8 ##
-* Improve publish script.
+* Improve publish script
 
 ## 0.0.1b6 ##
 * Fixed import version
