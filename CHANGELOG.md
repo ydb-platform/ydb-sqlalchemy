@@ -1,4 +1,4 @@
-* Improve publish script
+* Improve publish script.
 
 ## 0.0.1b6 ##
 * Fixed import version
