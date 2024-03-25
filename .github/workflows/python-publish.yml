@@ -29,7 +29,7 @@ jobs:
     env:
       VERSION_CHANGE: ${{ github.event.inputs.version-change }}
       WITH_BETA: ${{ github.event.inputs.beta }}
-#      GITHUB_TOKEN: ${{ secrets.YDB_PLATFORM_BOT_TOKEN_REPO }}
+      GITHUB_TOKEN: ${{ secrets.YDB_PLATFORM_BOT_TOKEN_REPO }}
       GH_TOKEN: ${{ github.token }}
       CHANGELOG_FILE: CHANGELOG.md
       SETUP_PY_PATH: setup.py
