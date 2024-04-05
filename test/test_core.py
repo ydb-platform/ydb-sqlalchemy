@@ -732,3 +732,68 @@ class TestUpsertDoesNotReplaceInsert(TablesTest):
         row = connection.execute(sa.select(tb).where(tb.c.id == 2)).fetchone()
 
         assert row == (2, "INSERT is my favourite operation")
+
+
+class TestSecondaryIndex(TestBase):
+    __backend__ = True
+
+    def test_column_indexes(self, connection: sa.Connection, metadata: sa.MetaData):
+        table = Table(
+            "test_column_indexes/table",
+            metadata,
+            sa.Column("id", sa.Integer, primary_key=True),
+            sa.Column("index_col1", sa.Integer, index=True),
+            sa.Column("index_col2", sa.Integer, index=True),
+        )
+        table.create(connection)
+
+        table_desc: ydb.TableDescription = connection.connection.driver_connection.describe(table.name)
+        indexes: list[ydb.TableIndex] = table_desc.indexes
+        assert len(indexes) == 2
+        indexes_map = {idx.name: idx for idx in indexes}
+
+        assert "ix_test_column_indexes_table_index_col1" in indexes_map
+        index1 = indexes_map["ix_test_column_indexes_table_index_col1"]
+        assert index1.index_columns == ["index_col1"]
+
+        assert "ix_test_column_indexes_table_index_col2" in indexes_map
+        index1 = indexes_map["ix_test_column_indexes_table_index_col2"]
+        assert index1.index_columns == ["index_col2"]
+
+    def test_async_index(self, connection: sa.Connection, metadata: sa.MetaData):
+        table = Table(
+            "test_async_index/table",
+            metadata,
+            sa.Column("id", sa.Integer, primary_key=True),
+            sa.Column("index_col1", sa.Integer),
+            sa.Column("index_col2", sa.Integer),
+            sa.Index("test_async_index", "index_col1", "index_col2", ydb_async=True),
+        )
+        table.create(connection)
+
+        table_desc: ydb.TableDescription = connection.connection.driver_connection.describe(table.name)
+        indexes: list[ydb.TableIndex] = table_desc.indexes
+        assert len(indexes) == 1
+        index = indexes[0]
+        assert index.name == "test_async_index"
+        assert set(index.index_columns) == {"index_col1", "index_col2"}
+        # TODO: Uncomment after fix https://github.com/ydb-platform/ydb-python-sdk/issues/351
+        # assert index.to_pb().WhichOneof("type") == "global_async_index"
+
+    def test_cover_index(self, connection: sa.Connection, metadata: sa.MetaData):
+        table = Table(
+            "test_cover_index/table",
+            metadata,
+            sa.Column("id", sa.Integer, primary_key=True),
+            sa.Column("index_col1", sa.Integer),
+            sa.Column("index_col2", sa.Integer),
+            sa.Index("test_cover_index", "index_col1", ydb_cover=["index_col2"]),
+        )
+        table.create(connection)
+
+        table_desc: ydb.TableDescription = connection.connection.driver_connection.describe(table.name)
+        indexes: list[ydb.TableIndex] = table_desc.indexes
+        assert len(indexes) == 1
+        index = indexes[0]
+        assert index.name == "test_cover_index"
+        assert set(index.index_columns) == {"index_col1"}

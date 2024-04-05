@@ -62,6 +62,9 @@ class YqlIdentifierPreparer(IdentifierPreparer):
             final_quote="`",
         )
 
+    def format_index(self, index: sa.Index) -> str:
+        return super().format_index(index).replace("/", "_")
+
 
 class YqlTypeCompiler(StrSQLTypeCompiler):
     def visit_JSON(self, type_: Union[sa.JSON, types.YqlJSON], **kw):
@@ -446,6 +449,34 @@ class YqlCompiler(StrSQLCompiler):
 
 
 class YqlDDLCompiler(DDLCompiler):
+    def visit_create_index(self, create, include_schema=False, include_table_schema=True, **kw):
+        index: sa.Index = create.element
+        ydb_opts = index.dialect_options.get("ydb", {})
+
+        self._verify_index_table(index)
+
+        if index.name is None:
+            raise CompileError("ADD INDEX requires that the index have a name")
+
+        table_name = self.preparer.format_table(index.table)
+        index_name = self._prepared_index_name(index)
+
+        text = f"ALTER TABLE {table_name} ADD INDEX {index_name} GLOBAL"
+
+        text += " SYNC " if not ydb_opts.get("async", False) else " ASYNC"
+
+        columns = {self.preparer.format_column(col) for col in index.columns.values()}
+        cover_columns = {
+            col if isinstance(col, str) else self.preparer.format_column(col) for col in ydb_opts.get("cover", [])
+        }
+
+        text += " ON (" + ", ".join(columns) + ")"
+
+        if cover_columns:
+            text += " COVER (" + ", ".join(cover_columns) + ")"
+
+        return text
+
     def post_create_table(self, table: sa.Table) -> str:
         ydb_opts = table.dialect_options["ydb"]
         with_clause_list = self._render_table_partitioning_settings(ydb_opts)
@@ -576,6 +607,13 @@ class YqlDialect(StrCompileDialect):
                 "auto_partitioning_max_partitions_count": None,
                 "uniform_partitions": None,
                 "partition_at_keys": None,
+            },
+        ),
+        (
+            sa.schema.Index,
+            {
+                "async": False,
+                "cover": [],
             },
         ),
     ]
