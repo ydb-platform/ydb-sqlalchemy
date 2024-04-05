@@ -628,7 +628,7 @@ class YqlDialect(StrCompileDialect):
         self._json_deserializer = json_deserializer
         self._json_serializer = json_serializer
 
-    def _describe_table(self, connection, table_name, schema=None):
+    def _describe_table(self, connection, table_name, schema=None) -> ydb.TableDescription:
         if schema is not None:
             raise dbapi.NotSupportedError("unsupported on non empty schema")
 
@@ -684,8 +684,22 @@ class YqlDialect(StrCompileDialect):
 
     @reflection.cache
     def get_indexes(self, connection, table_name, schema=None, **kwargs):
-        # TODO: implement me
-        return []
+        table = self._describe_table(connection, table_name, schema)
+        indexes: list[ydb.TableIndex] = table.indexes
+        sa_indexes: list[sa.engine.interfaces.ReflectedIndex] = []
+        for index in indexes:
+            sa_indexes.append(
+                sa.engine.interfaces.ReflectedIndex(
+                    name=index.name,
+                    column_names=index.index_columns,
+                    unique=False,
+                    dialect_options={
+                        "ydb_async": False,  # TODO After https://github.com/ydb-platform/ydb-python-sdk/issues/351
+                        "ydb_cover": [],  # TODO After https://github.com/ydb-platform/ydb-python-sdk/issues/409
+                    },
+                )
+            )
+        return sa_indexes
 
     def set_isolation_level(self, dbapi_connection: dbapi.Connection, level: str) -> None:
         dbapi_connection.set_isolation_level(level)

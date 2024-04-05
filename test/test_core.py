@@ -777,8 +777,7 @@ class TestSecondaryIndex(TestBase):
         index = indexes[0]
         assert index.name == "test_async_index"
         assert set(index.index_columns) == {"index_col1", "index_col2"}
-        # TODO: Uncomment after fix https://github.com/ydb-platform/ydb-python-sdk/issues/351
-        # assert index.to_pb().WhichOneof("type") == "global_async_index"
+        # TODO: Check type after https://github.com/ydb-platform/ydb-python-sdk/issues/351
 
     def test_cover_index(self, connection: sa.Connection, metadata: sa.MetaData):
         table = Table(
@@ -797,3 +796,30 @@ class TestSecondaryIndex(TestBase):
         index = indexes[0]
         assert index.name == "test_cover_index"
         assert set(index.index_columns) == {"index_col1"}
+        # TODO: Check covered columns after https://github.com/ydb-platform/ydb-python-sdk/issues/409
+
+    def test_indexes_reflection(self, connection: sa.Connection, metadata: sa.MetaData):
+        table = Table(
+            "test_indexes_reflection/table",
+            metadata,
+            sa.Column("id", sa.Integer, primary_key=True),
+            sa.Column("index_col1", sa.Integer, index=True),
+            sa.Column("index_col2", sa.Integer),
+            sa.Index("test_index", "index_col1", "index_col2"),
+            sa.Index("test_async_index", "index_col1", "index_col2", ydb_async=True),
+            sa.Index("test_cover_index", "index_col1", ydb_cover=["index_col2"]),
+            sa.Index("test_async_cover_index", "index_col1", ydb_async=True, ydb_cover=["index_col2"]),
+        )
+        table.create(connection)
+
+        indexes = sa.inspect(connection).get_indexes(table.name)
+        assert len(indexes) == 5
+        indexes_names = {idx["name"]: set(idx["column_names"]) for idx in indexes}
+
+        assert indexes_names == {
+            "ix_test_indexes_reflection_table_index_col1": {"index_col1"},
+            "test_index": {"index_col1", "index_col2"},
+            "test_async_index": {"index_col1", "index_col2"},
+            "test_cover_index": {"index_col1"},
+            "test_async_cover_index": {"index_col1"},
+        }
