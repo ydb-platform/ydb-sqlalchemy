@@ -235,6 +235,9 @@ class ParametrizedFunction(functions.Function):
 class YqlCompiler(StrSQLCompiler):
     compound_keywords = COMPOUND_KEYWORDS
 
+    def get_from_hint_text(self, table, text):
+        return text
+
     def render_bind_cast(self, type_, dbapi_type, sqltext):
         pass
 

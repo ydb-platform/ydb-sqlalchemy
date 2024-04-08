@@ -823,3 +823,88 @@ class TestSecondaryIndex(TestBase):
             "test_cover_index": {"index_col1"},
             "test_async_cover_index": {"index_col1"},
         }
+
+    def test_index_simple_usage(self, connection: sa.Connection, metadata: sa.MetaData):
+        persons = Table(
+            "test_index_simple_usage/persons",
+            metadata,
+            sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column("tax_number", sa.Integer()),
+            sa.Column("full_name", sa.Unicode()),
+            sa.Index("ix_tax_number_cover_full_name", "tax_number", ydb_cover=["full_name"]),
+        )
+        persons.create(connection)
+        connection.execute(
+            sa.insert(persons).values(
+                [
+                    {"id": 1, "tax_number": 333333, "full_name": "John Connor"},
+                    {"id": 2, "tax_number": 444444, "full_name": "Sarah Connor"},
+                ]
+            )
+        )
+
+        # Because of this bug https://github.com/ydb-platform/ydb/issues/3510,
+        # it is not possible to use full qualified name of columns with VIEW clause
+        select_stmt = (
+            sa.select(sa.column(persons.c.full_name.name))
+            .select_from(persons)
+            .with_hint(persons, "VIEW `ix_tax_number_cover_full_name`")
+            .where(sa.column(persons.c.tax_number.name) == 444444)
+        )
+
+        cursor = connection.execute(select_stmt)
+        assert cursor.scalar_one() == "Sarah Connor"
+
+    def test_index_with_join_usage(self, connection: sa.Connection, metadata: sa.MetaData):
+        persons = Table(
+            "test_index_with_join_usage/persons",
+            metadata,
+            sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column("tax_number", sa.Integer()),
+            sa.Column("full_name", sa.Unicode()),
+            sa.Index("ix_tax_number_cover_full_name", "tax_number", ydb_cover=["full_name"]),
+        )
+        persons.create(connection)
+        connection.execute(
+            sa.insert(persons).values(
+                [
+                    {"id": 1, "tax_number": 333333, "full_name": "John Connor"},
+                    {"id": 2, "tax_number": 444444, "full_name": "Sarah Connor"},
+                ]
+            )
+        )
+        person_status = Table(
+            "test_index_with_join_usage/person_status",
+            metadata,
+            sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column("status", sa.Unicode()),
+        )
+        person_status.create(connection)
+        connection.execute(
+            sa.insert(person_status).values(
+                [
+                    {"id": 1, "status": "unknown"},
+                    {"id": 2, "status": "wanted"},
+                ]
+            )
+        )
+
+        # Because of this bug https://github.com/ydb-platform/ydb/issues/3510,
+        # it is not possible to use full qualified name of columns with VIEW clause
+        persons_indexed = (
+            sa.select(
+                sa.column(persons.c.id.name),
+                sa.column(persons.c.full_name.name),
+                sa.column(persons.c.tax_number.name),
+            )
+            .select_from(persons)
+            .with_hint(persons, "VIEW `ix_tax_number_cover_full_name`")
+        )
+        select_stmt = (
+            sa.select(persons_indexed.c.full_name, person_status.c.status)
+            .select_from(person_status.join(persons_indexed, persons_indexed.c.id == person_status.c.id))
+            .where(persons_indexed.c.tax_number == 444444)
+        )
+
+        cursor = connection.execute(select_stmt)
+        assert cursor.one() == ("Sarah Connor", "wanted")
