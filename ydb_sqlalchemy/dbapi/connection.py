@@ -157,6 +157,7 @@ class Connection:
             endpoint=self.endpoint,
             database=self.database,
             table_client_settings=self._get_table_client_settings(),
+            credentials=ydb.credentials_from_env_variables(),
         )
         driver = self._ydb_driver_class(driver_config)
         try:
