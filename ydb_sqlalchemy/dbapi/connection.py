@@ -37,6 +37,7 @@ class Connection:
         self.endpoint = f"grpc://{host}:{port}"
         self.database = database
         self.conn_kwargs = conn_kwargs
+        self.credentials = self.conn_kwargs.pop("credentials", None)
 
         if "ydb_session_pool" in self.conn_kwargs:  # Use session pool managed manually
             self._shared_session_pool = True
@@ -157,6 +158,7 @@ class Connection:
             endpoint=self.endpoint,
             database=self.database,
             table_client_settings=self._get_table_client_settings(),
+            credentials=self.credentials,
         )
         driver = self._ydb_driver_class(driver_config)
         try:
