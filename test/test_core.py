@@ -597,6 +597,57 @@ class TestAsyncEngine(TestEngine):
             loop.run_until_complete(session_pool.stop())
 
 
+class TestCredentials(TestBase):
+    __backend__ = True
+    __only_on__ = "yql+ydb"
+
+    @pytest.fixture(scope="class")
+    def table_client_settings(self):
+        yield (
+            ydb.TableClientSettings()
+            .with_native_date_in_result_sets(True)
+            .with_native_datetime_in_result_sets(True)
+            .with_native_timestamp_in_result_sets(True)
+            .with_native_interval_in_result_sets(True)
+            .with_native_json_in_result_sets(False)
+        )
+
+    @pytest.fixture(scope="class")
+    def driver_config_for_credentials(self, table_client_settings):
+        url = config.db_url
+        endpoint=f"grpc://{url.host}:{url.port}"
+        database=url.database
+
+        yield ydb.DriverConfig(
+            endpoint=endpoint,
+            database=database,
+            table_client_settings=table_client_settings,
+        )
+
+    def test_ydb_credentials_good(self, table_client_settings, driver_config_for_credentials):
+        credentials_good = ydb.StaticCredentials(
+            driver_config=driver_config_for_credentials,
+            user="root",
+            password="1234",
+        )
+        engine = sa.create_engine(config.db_url, connect_args={"credentials": credentials_good})
+        with engine.connect() as conn:
+            result = conn.execute(sa.text("SELECT 1 as value"))
+            assert result.fetchone()
+
+    def test_ydb_credentials_bad(self, table_client_settings, driver_config_for_credentials):
+        credentials_bad = ydb.StaticCredentials(
+            driver_config=driver_config_for_credentials,
+            user="root",
+            password="56",
+        )
+        engine = sa.create_engine(config.db_url, connect_args={"credentials": credentials_bad})
+        with pytest.raises(Exception) as excinfo:
+            with engine.connect() as conn:
+                conn.execute(sa.text("SELECT 1 as value"))
+        assert "Invalid password" in str(excinfo.value)
+
+
 class TestUpsert(TablesTest):
     __backend__ = True
 
