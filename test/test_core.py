@@ -615,8 +615,8 @@ class TestCredentials(TestBase):
     @pytest.fixture(scope="class")
     def driver_config_for_credentials(self, table_client_settings):
         url = config.db_url
-        endpoint=f"grpc://{url.host}:{url.port}"
-        database=url.database
+        endpoint = f"grpc://{url.host}:{url.port}"
+        database = url.database
 
         yield ydb.DriverConfig(
             endpoint=endpoint,
