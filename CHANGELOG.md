@@ -1,3 +1,5 @@
+* supported ydb connection credentials
+
 ## 0.0.1b11 ##
 * test release
 
