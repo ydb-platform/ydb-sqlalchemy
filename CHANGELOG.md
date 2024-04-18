@@ -1,3 +1,5 @@
+* Added declare for yql statement variables (opt in) - temporary flag
+
 ## 0.0.1b12 ##
 * supported ydb connection credentials
 
