@@ -83,6 +83,11 @@ class TestCrud(TablesTest):
             (5, "c"),
         ]
 
+    def test_sa_crud_with_add_declare(self):
+        engine = sa.create_engine(config.db_url, _add_declare_for_yql_stmt_vars=True)
+        with engine.connect() as connection:
+            self.test_sa_crud(connection)
+
 
 class TestSimpleSelect(TablesTest):
     __backend__ = True
