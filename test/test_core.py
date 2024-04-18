@@ -84,7 +84,7 @@ class TestCrud(TablesTest):
         ]
 
     def test_sa_crud_with_add_declare(self):
-        engine = sa.create_engine(config.db_url, add_declare_for_yql_stmt_vars=True)
+        engine = sa.create_engine(config.db_url, _add_declare_for_yql_stmt_vars=True)
         with engine.connect() as connection:
             self.test_sa_crud(connection)
 

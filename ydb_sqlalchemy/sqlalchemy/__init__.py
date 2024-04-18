@@ -589,7 +589,8 @@ class YqlDialect(StrCompileDialect):
 
         self._json_deserializer = json_deserializer
         self._json_serializer = json_serializer
-        # NOTE: _add_declare_for_yql_stmt_vars is temporary and is soon to be removed
+        # NOTE: _add_declare_for_yql_stmt_vars is temporary and is soon to be removed.
+        # no need in declare in yql statement here since ydb 24-1
         self._add_declare_for_yql_stmt_vars = _add_declare_for_yql_stmt_vars
 
     def _describe_table(self, connection, table_name, schema=None):
