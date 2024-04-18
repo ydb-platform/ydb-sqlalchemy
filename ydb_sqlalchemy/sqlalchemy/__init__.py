@@ -584,13 +584,7 @@ class YqlDialect(StrCompileDialect):
     def import_dbapi(cls: Any):
         return dbapi.YdbDBApi()
 
-    def __init__(
-            self,
-            json_serializer=None,
-            json_deserializer=None,
-            add_declare_for_yql_stmt_vars=False,
-            **kwargs
-    ):
+    def __init__(self, json_serializer=None, json_deserializer=None, add_declare_for_yql_stmt_vars=False, **kwargs):
         super().__init__(**kwargs)
 
         self._json_deserializer = json_deserializer
@@ -705,9 +699,9 @@ class YqlDialect(StrCompileDialect):
         return formatted_statement, formatted_parameters
 
     def _add_declare_for_yql_stmt_vars_impl(self, statement, parameters_types):
-        declarations = "\n".join([
-            f"DECLARE {param_name} as {str(param_type)};" for param_name, param_type in parameters_types.items()
-        ])
+        declarations = "\n".join(
+            [f"DECLARE {param_name} as {str(param_type)};" for param_name, param_type in parameters_types.items()]
+        )
         return f"{declarations}\n{statement}"
 
     def _make_ydb_operation(
