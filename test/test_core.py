@@ -7,6 +7,7 @@ import pytest
 import sqlalchemy as sa
 import ydb
 from sqlalchemy import Column, Integer, String, Table, Unicode
+from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.testing.fixtures import TablesTest, TestBase, config
 from ydb._grpc.v4.protos import ydb_common_pb2
 
@@ -87,6 +88,46 @@ class TestCrud(TablesTest):
         engine = sa.create_engine(config.db_url, _add_declare_for_yql_stmt_vars=True)
         with engine.connect() as connection:
             self.test_sa_crud(connection)
+
+
+class TestDirectories(TablesTest):
+    __backend__ = True
+
+    def prepare_table(self, engine):
+        base = declarative_base()
+        class Table(base):
+            __tablename__ = 'dir/test'
+            id = Column(Integer, primary_key=True)
+            text = Column(Unicode)
+        base.metadata.create_all(engine)
+        session = sessionmaker(bind=engine)()
+        session.add(Table(id=2, text="foo"))
+        session.commit()
+        return base, Table, session
+
+    def try_update(self, session, Table):
+        row = session.query(Table).first()
+        row.text = "bar"
+        session.commit()
+        return row
+
+    def drop_table(self, base, engine):
+        base.metadata.drop_all(engine)
+
+    def test_directories(self):
+        engine_good = sa.create_engine(config.db_url, directories=["dir"])
+        base, Table, session = self.prepare_table(engine_good)
+        row = self.try_update(session, Table)
+        assert row.id == 2
+        assert row.text == "bar"
+        self.drop_table(base, engine_good)
+
+        engine_bad = sa.create_engine(config.db_url)
+        base, Table, session = self.prepare_table(engine_bad)
+        with pytest.raises(Exception) as excinfo:
+            self.try_update(session, Table)
+        assert "Unknown name: $dir" in str(excinfo.value)
+        self.drop_table(base, engine_bad)
 
 
 class TestSimpleSelect(TablesTest):
