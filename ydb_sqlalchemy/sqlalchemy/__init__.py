@@ -584,12 +584,13 @@ class YqlDialect(StrCompileDialect):
     def import_dbapi(cls: Any):
         return dbapi.YdbDBApi()
 
-    def __init__(self, json_serializer=None, json_deserializer=None, add_declare_for_yql_stmt_vars=False, **kwargs):
+    def __init__(self, json_serializer=None, json_deserializer=None, _add_declare_for_yql_stmt_vars=False, **kwargs):
         super().__init__(**kwargs)
 
         self._json_deserializer = json_deserializer
         self._json_serializer = json_serializer
-        self._add_declare_for_yql_stmt_vars = add_declare_for_yql_stmt_vars
+        # NOTE: _add_declare_for_yql_stmt_vars is temporary and is soon to be removed
+        self._add_declare_for_yql_stmt_vars = _add_declare_for_yql_stmt_vars
 
     def _describe_table(self, connection, table_name, schema=None):
         if schema is not None:
