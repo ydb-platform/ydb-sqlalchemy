@@ -117,7 +117,7 @@ class TestDirectories(TablesTest):
         base.metadata.drop_all(engine)
 
     def test_directories(self):
-        engine_good = sa.create_engine(config.db_url, directories=["dir"])
+        engine_good = sa.create_engine(config.db_url, has_directories=True)
         base, Table, session = self.prepare_table(engine_good)
         row = self.try_update(session, Table)
         assert row.id == 2

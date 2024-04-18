@@ -589,7 +589,7 @@ class YqlDialect(StrCompileDialect):
         json_serializer=None,
         json_deserializer=None,
         _add_declare_for_yql_stmt_vars=False,
-        directories=[],
+        has_directories=False,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -599,7 +599,7 @@ class YqlDialect(StrCompileDialect):
         # NOTE: _add_declare_for_yql_stmt_vars is temporary and is soon to be removed.
         # no need in declare in yql statement here since ydb 24-1
         self._add_declare_for_yql_stmt_vars = _add_declare_for_yql_stmt_vars
-        self._directories = directories
+        self._has_directories = has_directories
 
     def _describe_table(self, connection, table_name, schema=None):
         if schema is not None:
@@ -682,9 +682,8 @@ class YqlDialect(StrCompileDialect):
         dbapi_connection.commit()
 
     def _fix_variable_name(self, variable):
-        for directory in self._directories:
-            if variable.startswith(f"{directory}/"):
-                return f"{directory}_" + variable[len(directory) + 1 :]
+        if self._has_directories:
+            return variable.replace("/", "_")
         return variable
 
     def _format_variables(
