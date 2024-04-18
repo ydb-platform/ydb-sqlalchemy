@@ -584,7 +584,14 @@ class YqlDialect(StrCompileDialect):
     def import_dbapi(cls: Any):
         return dbapi.YdbDBApi()
 
-    def __init__(self, json_serializer=None, json_deserializer=None, _add_declare_for_yql_stmt_vars=False, directories=[], **kwargs):
+    def __init__(
+        self,
+        json_serializer=None,
+        json_deserializer=None,
+        _add_declare_for_yql_stmt_vars=False,
+        directories=[],
+        **kwargs,
+    ):
         super().__init__(**kwargs)
 
         self._json_deserializer = json_deserializer
@@ -677,7 +684,7 @@ class YqlDialect(StrCompileDialect):
     def _fix_variable_name(self, variable):
         for directory in self._directories:
             if variable.startswith(f"{directory}/"):
-                return f"{directory}_" + variable[len(directory) + 1:]
+                return f"{directory}_" + variable[len(directory) + 1 :]
         return variable
 
     def _format_variables(
@@ -696,12 +703,16 @@ class YqlDialect(StrCompileDialect):
                 formatted_parameters = []
                 for i in range(len(parameters_sequence)):
                     variable_names.update(set(parameters_sequence[i].keys()))
-                    formatted_parameters.append({f"${self._fix_variable_name(k)}": v for k, v in parameters_sequence[i].items()})
+                    formatted_parameters.append(
+                        {f"${self._fix_variable_name(k)}": v for k, v in parameters_sequence[i].items()}
+                    )
             else:
                 variable_names = set(parameters.keys())
                 formatted_parameters = {f"${self._fix_variable_name(k)}": v for k, v in parameters.items()}
 
-            formatted_variable_names = {variable_name: f"${self._fix_variable_name(variable_name)}" for variable_name in variable_names}
+            formatted_variable_names = {
+                variable_name: f"${self._fix_variable_name(variable_name)}" for variable_name in variable_names
+            }
             formatted_statement = formatted_statement % formatted_variable_names
 
         formatted_statement = formatted_statement.replace("%%", "%")

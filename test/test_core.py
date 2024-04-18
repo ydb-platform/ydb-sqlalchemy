@@ -95,10 +95,12 @@ class TestDirectories(TablesTest):
 
     def prepare_table(self, engine):
         base = declarative_base()
+
         class Table(base):
             __tablename__ = 'dir/test'
             id = Column(Integer, primary_key=True)
             text = Column(Unicode)
+
         base.metadata.create_all(engine)
         session = sessionmaker(bind=engine)()
         session.add(Table(id=2, text="foo"))
