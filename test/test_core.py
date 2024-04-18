@@ -97,7 +97,7 @@ class TestDirectories(TablesTest):
         base = declarative_base()
 
         class Table(base):
-            __tablename__ = 'dir/test'
+            __tablename__ = "dir/test"
             id = Column(Integer, primary_key=True)
             text = Column(Unicode)
 
