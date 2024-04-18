@@ -584,7 +584,7 @@ class YqlDialect(StrCompileDialect):
     def import_dbapi(cls: Any):
         return dbapi.YdbDBApi()
 
-    def __init__(self, json_serializer=None, json_deserializer=None, _add_declare_for_yql_stmt_vars=False, **kwargs):
+    def __init__(self, json_serializer=None, json_deserializer=None, _add_declare_for_yql_stmt_vars=False, directories=[], **kwargs):
         super().__init__(**kwargs)
 
         self._json_deserializer = json_deserializer
@@ -592,6 +592,7 @@ class YqlDialect(StrCompileDialect):
         # NOTE: _add_declare_for_yql_stmt_vars is temporary and is soon to be removed.
         # no need in declare in yql statement here since ydb 24-1
         self._add_declare_for_yql_stmt_vars = _add_declare_for_yql_stmt_vars
+        self._directories = directories
 
     def _describe_table(self, connection, table_name, schema=None):
         if schema is not None:
@@ -673,6 +674,12 @@ class YqlDialect(StrCompileDialect):
     def do_commit(self, dbapi_connection: dbapi.Connection) -> None:
         dbapi_connection.commit()
 
+    def _fix_variable_name(self, variable):
+        for directory in self._directories:
+            if variable.startswith(f"{directory}/"):
+                return f"{directory}_" + variable[len(directory) + 1:]
+        return variable
+
     def _format_variables(
         self,
         statement: str,
@@ -689,12 +696,12 @@ class YqlDialect(StrCompileDialect):
                 formatted_parameters = []
                 for i in range(len(parameters_sequence)):
                     variable_names.update(set(parameters_sequence[i].keys()))
-                    formatted_parameters.append({f"${k}": v for k, v in parameters_sequence[i].items()})
+                    formatted_parameters.append({f"${self._fix_variable_name(k)}": v for k, v in parameters_sequence[i].items()})
             else:
                 variable_names = set(parameters.keys())
-                formatted_parameters = {f"${k}": v for k, v in parameters.items()}
+                formatted_parameters = {f"${self._fix_variable_name(k)}": v for k, v in parameters.items()}
 
-            formatted_variable_names = {variable_name: f"${variable_name}" for variable_name in variable_names}
+            formatted_variable_names = {variable_name: f"${self._fix_variable_name(variable_name)}" for variable_name in variable_names}
             formatted_statement = formatted_statement % formatted_variable_names
 
         formatted_statement = formatted_statement.replace("%%", "%")
@@ -717,7 +724,7 @@ class YqlDialect(StrCompileDialect):
 
         if not is_ddl and parameters:
             parameters_types = context.compiled.get_bind_types(parameters)
-            parameters_types = {f"${k}": v for k, v in parameters_types.items()}
+            parameters_types = {f"${self._fix_variable_name(k)}": v for k, v in parameters_types.items()}
             statement, parameters = self._format_variables(statement, parameters, execute_many)
             if self._add_declare_for_yql_stmt_vars:
                 statement = self._add_declare_for_yql_stmt_vars_impl(statement, parameters_types)
