@@ -679,7 +679,7 @@ class YqlDialect(StrCompileDialect):
     def do_commit(self, dbapi_connection: dbapi.Connection) -> None:
         dbapi_connection.commit()
 
-    def _fix_variable_name(self, variable):
+    def _handle_column_name(self, variable):
         return variable.replace("/", "__")
 
     def _format_variables(
@@ -699,14 +699,14 @@ class YqlDialect(StrCompileDialect):
                 for i in range(len(parameters_sequence)):
                     variable_names.update(set(parameters_sequence[i].keys()))
                     formatted_parameters.append(
-                        {f"${self._fix_variable_name(k)}": v for k, v in parameters_sequence[i].items()}
+                        {f"${self._handle_column_name(k)}": v for k, v in parameters_sequence[i].items()}
                     )
             else:
                 variable_names = set(parameters.keys())
-                formatted_parameters = {f"${self._fix_variable_name(k)}": v for k, v in parameters.items()}
+                formatted_parameters = {f"${self._handle_column_name(k)}": v for k, v in parameters.items()}
 
             formatted_variable_names = {
-                variable_name: f"${self._fix_variable_name(variable_name)}" for variable_name in variable_names
+                variable_name: f"${self._handle_column_name(variable_name)}" for variable_name in variable_names
             }
             formatted_statement = formatted_statement % formatted_variable_names
 
@@ -730,7 +730,7 @@ class YqlDialect(StrCompileDialect):
 
         if not is_ddl and parameters:
             parameters_types = context.compiled.get_bind_types(parameters)
-            parameters_types = {f"${self._fix_variable_name(k)}": v for k, v in parameters_types.items()}
+            parameters_types = {f"${self._handle_column_name(k)}": v for k, v in parameters_types.items()}
             statement, parameters = self._format_variables(statement, parameters, execute_many)
             if self._add_declare_for_yql_stmt_vars:
                 statement = self._add_declare_for_yql_stmt_vars_impl(statement, parameters_types)

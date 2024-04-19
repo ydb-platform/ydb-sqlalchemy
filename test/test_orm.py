@@ -33,10 +33,10 @@ class TestDirectories(TablesTest):
         base.metadata.drop_all(engine)
 
     def bind_old_method_to_dialect(self, dialect):
-        def _fix_variable_name(self, variable):
+        def _handle_column_name(self, variable):
             return variable
 
-        dialect._fix_variable_name = MethodType(_fix_variable_name, dialect)
+        dialect._handle_column_name = MethodType(_handle_column_name, dialect)
 
     def test_directories(self):
         engine_good = sa.create_engine(config.db_url)
