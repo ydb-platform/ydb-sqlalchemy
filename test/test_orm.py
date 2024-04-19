@@ -5,6 +5,7 @@ from sqlalchemy import Column, Integer, Unicode
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.testing.fixtures import TablesTest, config
 
+
 class TestDirectories(TablesTest):
     __backend__ = True
 
@@ -34,6 +35,7 @@ class TestDirectories(TablesTest):
     def bind_old_method_to_dialect(self, dialect):
         def _fix_variable_name(self, variable):
             return variable
+
         dialect._fix_variable_name = MethodType(_fix_variable_name, dialect)
 
     def test_directories(self):
