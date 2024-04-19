@@ -7,7 +7,6 @@ import pytest
 import sqlalchemy as sa
 import ydb
 from sqlalchemy import Column, Integer, String, Table, Unicode
-from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.testing.fixtures import TablesTest, TestBase, config
 from ydb._grpc.v4.protos import ydb_common_pb2
 
