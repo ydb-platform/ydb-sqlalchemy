@@ -466,7 +466,7 @@ class YqlDDLCompiler(DDLCompiler):
 
         text = f"ALTER TABLE {table_name} ADD INDEX {index_name} GLOBAL"
 
-        text += " SYNC " if not ydb_opts.get("async", False) else " ASYNC"
+        text += " SYNC" if not ydb_opts.get("async", False) else " ASYNC"
 
         columns = {self.preparer.format_column(col) for col in index.columns.values()}
         cover_columns = {
