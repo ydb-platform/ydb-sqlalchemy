@@ -1,3 +1,5 @@
+* Added secondary index support
+
 ## 0.0.1b13 ##
 * Added declare for yql statement variables (opt in) - temporary flag
 
