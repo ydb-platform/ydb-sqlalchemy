@@ -1,3 +1,4 @@
+## 0.0.1b14 ##
 * Added secondary index support
 
 ## 0.0.1b13 ##
