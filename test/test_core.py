@@ -788,3 +788,179 @@ class TestUpsertDoesNotReplaceInsert(TablesTest):
         row = connection.execute(sa.select(tb).where(tb.c.id == 2)).fetchone()
 
         assert row == (2, "INSERT is my favourite operation")
+
+
+class TestSecondaryIndex(TestBase):
+    __backend__ = True
+
+    def test_column_indexes(self, connection: sa.Connection, metadata: sa.MetaData):
+        table = Table(
+            "test_column_indexes/table",
+            metadata,
+            sa.Column("id", sa.Integer, primary_key=True),
+            sa.Column("index_col1", sa.Integer, index=True),
+            sa.Column("index_col2", sa.Integer, index=True),
+        )
+        table.create(connection)
+
+        table_desc: ydb.TableDescription = connection.connection.driver_connection.describe(table.name)
+        indexes: list[ydb.TableIndex] = table_desc.indexes
+        assert len(indexes) == 2
+        indexes_map = {idx.name: idx for idx in indexes}
+
+        assert "ix_test_column_indexes_table_index_col1" in indexes_map
+        index1 = indexes_map["ix_test_column_indexes_table_index_col1"]
+        assert index1.index_columns == ["index_col1"]
+
+        assert "ix_test_column_indexes_table_index_col2" in indexes_map
+        index1 = indexes_map["ix_test_column_indexes_table_index_col2"]
+        assert index1.index_columns == ["index_col2"]
+
+    def test_async_index(self, connection: sa.Connection, metadata: sa.MetaData):
+        table = Table(
+            "test_async_index/table",
+            metadata,
+            sa.Column("id", sa.Integer, primary_key=True),
+            sa.Column("index_col1", sa.Integer),
+            sa.Column("index_col2", sa.Integer),
+            sa.Index("test_async_index", "index_col1", "index_col2", ydb_async=True),
+        )
+        table.create(connection)
+
+        table_desc: ydb.TableDescription = connection.connection.driver_connection.describe(table.name)
+        indexes: list[ydb.TableIndex] = table_desc.indexes
+        assert len(indexes) == 1
+        index = indexes[0]
+        assert index.name == "test_async_index"
+        assert set(index.index_columns) == {"index_col1", "index_col2"}
+        # TODO: Check type after https://github.com/ydb-platform/ydb-python-sdk/issues/351
+
+    def test_cover_index(self, connection: sa.Connection, metadata: sa.MetaData):
+        table = Table(
+            "test_cover_index/table",
+            metadata,
+            sa.Column("id", sa.Integer, primary_key=True),
+            sa.Column("index_col1", sa.Integer),
+            sa.Column("index_col2", sa.Integer),
+            sa.Index("test_cover_index", "index_col1", ydb_cover=["index_col2"]),
+        )
+        table.create(connection)
+
+        table_desc: ydb.TableDescription = connection.connection.driver_connection.describe(table.name)
+        indexes: list[ydb.TableIndex] = table_desc.indexes
+        assert len(indexes) == 1
+        index = indexes[0]
+        assert index.name == "test_cover_index"
+        assert set(index.index_columns) == {"index_col1"}
+        # TODO: Check covered columns after https://github.com/ydb-platform/ydb-python-sdk/issues/409
+
+    def test_indexes_reflection(self, connection: sa.Connection, metadata: sa.MetaData):
+        table = Table(
+            "test_indexes_reflection/table",
+            metadata,
+            sa.Column("id", sa.Integer, primary_key=True),
+            sa.Column("index_col1", sa.Integer, index=True),
+            sa.Column("index_col2", sa.Integer),
+            sa.Index("test_index", "index_col1", "index_col2"),
+            sa.Index("test_async_index", "index_col1", "index_col2", ydb_async=True),
+            sa.Index("test_cover_index", "index_col1", ydb_cover=["index_col2"]),
+            sa.Index("test_async_cover_index", "index_col1", ydb_async=True, ydb_cover=["index_col2"]),
+        )
+        table.create(connection)
+
+        indexes = sa.inspect(connection).get_indexes(table.name)
+        assert len(indexes) == 5
+        indexes_names = {idx["name"]: set(idx["column_names"]) for idx in indexes}
+
+        assert indexes_names == {
+            "ix_test_indexes_reflection_table_index_col1": {"index_col1"},
+            "test_index": {"index_col1", "index_col2"},
+            "test_async_index": {"index_col1", "index_col2"},
+            "test_cover_index": {"index_col1"},
+            "test_async_cover_index": {"index_col1"},
+        }
+
+    def test_index_simple_usage(self, connection: sa.Connection, metadata: sa.MetaData):
+        persons = Table(
+            "test_index_simple_usage/persons",
+            metadata,
+            sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column("tax_number", sa.Integer()),
+            sa.Column("full_name", sa.Unicode()),
+            sa.Index("ix_tax_number_cover_full_name", "tax_number", ydb_cover=["full_name"]),
+        )
+        persons.create(connection)
+        connection.execute(
+            sa.insert(persons).values(
+                [
+                    {"id": 1, "tax_number": 333333, "full_name": "John Connor"},
+                    {"id": 2, "tax_number": 444444, "full_name": "Sarah Connor"},
+                ]
+            )
+        )
+
+        # Because of this bug https://github.com/ydb-platform/ydb/issues/3510,
+        # it is not possible to use full qualified name of columns with VIEW clause
+        select_stmt = (
+            sa.select(sa.column(persons.c.full_name.name))
+            .select_from(persons)
+            .with_hint(persons, "VIEW `ix_tax_number_cover_full_name`")
+            .where(sa.column(persons.c.tax_number.name) == 444444)
+        )
+
+        cursor = connection.execute(select_stmt)
+        assert cursor.scalar_one() == "Sarah Connor"
+
+    def test_index_with_join_usage(self, connection: sa.Connection, metadata: sa.MetaData):
+        persons = Table(
+            "test_index_with_join_usage/persons",
+            metadata,
+            sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column("tax_number", sa.Integer()),
+            sa.Column("full_name", sa.Unicode()),
+            sa.Index("ix_tax_number_cover_full_name", "tax_number", ydb_cover=["full_name"]),
+        )
+        persons.create(connection)
+        connection.execute(
+            sa.insert(persons).values(
+                [
+                    {"id": 1, "tax_number": 333333, "full_name": "John Connor"},
+                    {"id": 2, "tax_number": 444444, "full_name": "Sarah Connor"},
+                ]
+            )
+        )
+        person_status = Table(
+            "test_index_with_join_usage/person_status",
+            metadata,
+            sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column("status", sa.Unicode()),
+        )
+        person_status.create(connection)
+        connection.execute(
+            sa.insert(person_status).values(
+                [
+                    {"id": 1, "status": "unknown"},
+                    {"id": 2, "status": "wanted"},
+                ]
+            )
+        )
+
+        # Because of this bug https://github.com/ydb-platform/ydb/issues/3510,
+        # it is not possible to use full qualified name of columns with VIEW clause
+        persons_indexed = (
+            sa.select(
+                sa.column(persons.c.id.name),
+                sa.column(persons.c.full_name.name),
+                sa.column(persons.c.tax_number.name),
+            )
+            .select_from(persons)
+            .with_hint(persons, "VIEW `ix_tax_number_cover_full_name`")
+        )
+        select_stmt = (
+            sa.select(persons_indexed.c.full_name, person_status.c.status)
+            .select_from(person_status.join(persons_indexed, persons_indexed.c.id == person_status.c.id))
+            .where(persons_indexed.c.tax_number == 444444)
+        )
+
+        cursor = connection.execute(select_stmt)
+        assert cursor.one() == ("Sarah Connor", "wanted")

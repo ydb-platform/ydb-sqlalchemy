@@ -62,6 +62,9 @@ class YqlIdentifierPreparer(IdentifierPreparer):
             final_quote="`",
         )
 
+    def format_index(self, index: sa.Index) -> str:
+        return super().format_index(index).replace("/", "_")
+
 
 class YqlTypeCompiler(StrSQLTypeCompiler):
     def visit_JSON(self, type_: Union[sa.JSON, types.YqlJSON], **kw):
@@ -231,6 +234,9 @@ class ParametrizedFunction(functions.Function):
 
 class YqlCompiler(StrSQLCompiler):
     compound_keywords = COMPOUND_KEYWORDS
+
+    def get_from_hint_text(self, table, text):
+        return text
 
     def render_bind_cast(self, type_, dbapi_type, sqltext):
         pass
@@ -446,6 +452,34 @@ class YqlCompiler(StrSQLCompiler):
 
 
 class YqlDDLCompiler(DDLCompiler):
+    def visit_create_index(self, create, include_schema=False, include_table_schema=True, **kw):
+        index: sa.Index = create.element
+        ydb_opts = index.dialect_options.get("ydb", {})
+
+        self._verify_index_table(index)
+
+        if index.name is None:
+            raise CompileError("ADD INDEX requires that the index has a name")
+
+        table_name = self.preparer.format_table(index.table)
+        index_name = self._prepared_index_name(index)
+
+        text = f"ALTER TABLE {table_name} ADD INDEX {index_name} GLOBAL"
+
+        text += " SYNC" if not ydb_opts.get("async", False) else " ASYNC"
+
+        columns = {self.preparer.format_column(col) for col in index.columns.values()}
+        cover_columns = {
+            col if isinstance(col, str) else self.preparer.format_column(col) for col in ydb_opts.get("cover", [])
+        }
+
+        text += " ON (" + ", ".join(columns) + ")"
+
+        if cover_columns:
+            text += " COVER (" + ", ".join(cover_columns) + ")"
+
+        return text
+
     def post_create_table(self, table: sa.Table) -> str:
         ydb_opts = table.dialect_options["ydb"]
         with_clause_list = self._render_table_partitioning_settings(ydb_opts)
@@ -578,6 +612,13 @@ class YqlDialect(StrCompileDialect):
                 "partition_at_keys": None,
             },
         ),
+        (
+            sa.schema.Index,
+            {
+                "async": False,
+                "cover": [],
+            },
+        ),
     ]
 
     @classmethod
@@ -599,7 +640,7 @@ class YqlDialect(StrCompileDialect):
         # no need in declare in yql statement here since ydb 24-1
         self._add_declare_for_yql_stmt_vars = _add_declare_for_yql_stmt_vars
 
-    def _describe_table(self, connection, table_name, schema=None):
+    def _describe_table(self, connection, table_name, schema=None) -> ydb.TableDescription:
         if schema is not None:
             raise dbapi.NotSupportedError("unsupported on non empty schema")
 
@@ -655,8 +696,22 @@ class YqlDialect(StrCompileDialect):
 
     @reflection.cache
     def get_indexes(self, connection, table_name, schema=None, **kwargs):
-        # TODO: implement me
-        return []
+        table = self._describe_table(connection, table_name, schema)
+        indexes: list[ydb.TableIndex] = table.indexes
+        sa_indexes: list[sa.engine.interfaces.ReflectedIndex] = []
+        for index in indexes:
+            sa_indexes.append(
+                sa.engine.interfaces.ReflectedIndex(
+                    name=index.name,
+                    column_names=index.index_columns,
+                    unique=False,
+                    dialect_options={
+                        "ydb_async": False,  # TODO After https://github.com/ydb-platform/ydb-python-sdk/issues/351
+                        "ydb_cover": [],  # TODO After https://github.com/ydb-platform/ydb-python-sdk/issues/409
+                    },
+                )
+            )
+        return sa_indexes
 
     def set_isolation_level(self, dbapi_connection: dbapi.Connection, level: str) -> None:
         dbapi_connection.set_isolation_level(level)

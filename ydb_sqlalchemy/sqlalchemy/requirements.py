@@ -46,6 +46,7 @@ class Requirements(SuiteRequirements):
 
     @property
     def index_reflection(self):
+        # Reflection supported with limits
         return exclusions.closed()
 
     @property
