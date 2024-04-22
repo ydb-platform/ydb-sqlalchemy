@@ -459,7 +459,7 @@ class YqlDDLCompiler(DDLCompiler):
         self._verify_index_table(index)
 
         if index.name is None:
-            raise CompileError("ADD INDEX requires that the index have a name")
+            raise CompileError("ADD INDEX requires that the index has a name")
 
         table_name = self.preparer.format_table(index.table)
         index_name = self._prepared_index_name(index)
