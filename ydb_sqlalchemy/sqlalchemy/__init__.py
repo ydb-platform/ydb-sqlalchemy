@@ -680,7 +680,7 @@ class YqlDialect(StrCompileDialect):
         dbapi_connection.commit()
 
     def _handle_column_name(self, variable):
-        return variable.replace("/", "__")
+        return "`" + variable + "`"
 
     def _format_variables(
         self,
@@ -698,12 +698,10 @@ class YqlDialect(StrCompileDialect):
                 formatted_parameters = []
                 for i in range(len(parameters_sequence)):
                     variable_names.update(set(parameters_sequence[i].keys()))
-                    formatted_parameters.append(
-                        {f"${self._handle_column_name(k)}": v for k, v in parameters_sequence[i].items()}
-                    )
+                    formatted_parameters.append({f"${k}": v for k, v in parameters_sequence[i].items()})
             else:
                 variable_names = set(parameters.keys())
-                formatted_parameters = {f"${self._handle_column_name(k)}": v for k, v in parameters.items()}
+                formatted_parameters = {f"${k}": v for k, v in parameters.items()}
 
             formatted_variable_names = {
                 variable_name: f"${self._handle_column_name(variable_name)}" for variable_name in variable_names
@@ -715,7 +713,10 @@ class YqlDialect(StrCompileDialect):
 
     def _add_declare_for_yql_stmt_vars_impl(self, statement, parameters_types):
         declarations = "\n".join(
-            [f"DECLARE {param_name} as {str(param_type)};" for param_name, param_type in parameters_types.items()]
+            [
+                f"DECLARE $`{param_name[1:]}` as {str(param_type)};"
+                for param_name, param_type in parameters_types.items()
+            ]
         )
         return f"{declarations}\n{statement}"
 
@@ -730,7 +731,7 @@ class YqlDialect(StrCompileDialect):
 
         if not is_ddl and parameters:
             parameters_types = context.compiled.get_bind_types(parameters)
-            parameters_types = {f"${self._handle_column_name(k)}": v for k, v in parameters_types.items()}
+            parameters_types = {f"${k}": v for k, v in parameters_types.items()}
             statement, parameters = self._format_variables(statement, parameters, execute_many)
             if self._add_declare_for_yql_stmt_vars:
                 statement = self._add_declare_for_yql_stmt_vars_impl(statement, parameters_types)
