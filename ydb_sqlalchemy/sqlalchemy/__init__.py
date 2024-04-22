@@ -584,7 +584,13 @@ class YqlDialect(StrCompileDialect):
     def import_dbapi(cls: Any):
         return dbapi.YdbDBApi()
 
-    def __init__(self, json_serializer=None, json_deserializer=None, _add_declare_for_yql_stmt_vars=False, **kwargs):
+    def __init__(
+        self,
+        json_serializer=None,
+        json_deserializer=None,
+        _add_declare_for_yql_stmt_vars=False,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
 
         self._json_deserializer = json_deserializer
@@ -673,6 +679,9 @@ class YqlDialect(StrCompileDialect):
     def do_commit(self, dbapi_connection: dbapi.Connection) -> None:
         dbapi_connection.commit()
 
+    def _handle_column_name(self, variable):
+        return "`" + variable + "`"
+
     def _format_variables(
         self,
         statement: str,
@@ -694,7 +703,9 @@ class YqlDialect(StrCompileDialect):
                 variable_names = set(parameters.keys())
                 formatted_parameters = {f"${k}": v for k, v in parameters.items()}
 
-            formatted_variable_names = {variable_name: f"${variable_name}" for variable_name in variable_names}
+            formatted_variable_names = {
+                variable_name: f"${self._handle_column_name(variable_name)}" for variable_name in variable_names
+            }
             formatted_statement = formatted_statement % formatted_variable_names
 
         formatted_statement = formatted_statement.replace("%%", "%")
@@ -702,7 +713,10 @@ class YqlDialect(StrCompileDialect):
 
     def _add_declare_for_yql_stmt_vars_impl(self, statement, parameters_types):
         declarations = "\n".join(
-            [f"DECLARE {param_name} as {str(param_type)};" for param_name, param_type in parameters_types.items()]
+            [
+                f"DECLARE $`{param_name[1:]}` as {str(param_type)};"
+                for param_name, param_type in parameters_types.items()
+            ]
         )
         return f"{declarations}\n{statement}"
 
