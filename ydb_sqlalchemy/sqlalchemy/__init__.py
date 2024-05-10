@@ -597,6 +597,7 @@ class YqlDialect(StrCompileDialect):
     colspecs = {
         sa.types.JSON: types.YqlJSON,
         sa.types.JSON.JSONPathType: types.YqlJSON.YqlJSONPathType,
+        sa.types.DateTime: types.YqlDateTime,
     }
 
     construct_arguments = [
