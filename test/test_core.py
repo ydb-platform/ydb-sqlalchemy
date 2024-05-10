@@ -1,5 +1,5 @@
 import asyncio
-from datetime import date, datetime
+import datetime
 from decimal import Decimal
 from typing import NamedTuple
 
@@ -187,39 +187,42 @@ class TestTypes(TablesTest):
     __backend__ = True
 
     @classmethod
-    def define_tables(cls, metadata):
+    def define_tables(cls, metadata: sa.MetaData):
         Table(
-            "test_types",
+            "test_primitive_types",
             metadata,
-            Column("id", Integer, primary_key=True),
+            Column("int", sa.Integer, primary_key=True),
             # Column("bin", sa.BINARY),
             Column("str", sa.String),
-            Column("num", sa.Float),
-            Column("bl", sa.Boolean),
-            Column("ts", sa.TIMESTAMP),
+            Column("float", sa.Float),
+            Column("bool", sa.Boolean),
+        )
+        Table(
+            "test_datetime_types",
+            metadata,
+            Column("datetime", sa.DateTime, primary_key=True),
+            Column("datetime_tz", sa.DateTime(timezone=True)),
+            Column("timestamp", sa.TIMESTAMP),
+            Column("timestamp_tz", sa.TIMESTAMP(timezone=True)),
             Column("date", sa.Date),
             # Column("interval", sa.Interval),
         )
 
-    def test_select_types(self, connection):
-        tb = self.tables.test_types
+    def test_primitive_types(self, connection):
+        table = self.tables.test_primitive_types
 
-        now, today = datetime.now(), date.today()
-
-        stm = tb.insert().values(
-            id=1,
+        statement = sa.insert(table).values(
+            int=42,
             # bin=b"abc",
             str="Hello World!",
-            num=3.5,
-            bl=True,
-            ts=now,
-            date=today,
+            float=3.5,
+            bool=True,
             # interval=timedelta(minutes=45),
         )
-        connection.execute(stm)
+        connection.execute(statement)
 
-        row = connection.execute(sa.select(tb)).fetchone()
-        assert row == (1, "Hello World!", 3.5, True, now, today)
+        row = connection.execute(sa.select(table)).fetchone()
+        assert row == (42, "Hello World!", 3.5, True)
 
     def test_integer_types(self, connection):
         stmt = sa.Select(
@@ -235,6 +238,34 @@ class TestTypes(TablesTest):
 
         result = connection.execute(stmt).fetchone()
         assert result == (b"Uint8", b"Uint16", b"Uint32", b"Uint64", b"Int8", b"Int16", b"Int32", b"Int64")
+
+    def test_datetime_types(self, connection: sa.Connection):
+        table = self.tables.test_datetime_types
+
+        now_dt = datetime.datetime.now()
+        now_dt_tz = now_dt.replace(tzinfo=datetime.timezone(datetime.timedelta(hours=3, minutes=42)))
+        today = now_dt.date()
+
+        statement = sa.insert(table).values(
+            datetime=now_dt,
+            datetime_tz=now_dt_tz,
+            timestamp=now_dt,
+            timestamp_tz=now_dt_tz,
+            date=today,
+            # interval=datetime.timedelta(minutes=45),
+        )
+        connection.execute(statement)
+
+        row = connection.execute(sa.select(table)).fetchone()
+
+        now_dt_tz_utc = now_dt.replace(tzinfo=datetime.timezone.utc) - datetime.timedelta(hours=3, minutes=42)
+        assert row == (
+            now_dt,
+            now_dt_tz_utc,  # YDB doesn't store timezone, so it is always utc
+            now_dt,
+            now_dt_tz_utc,  # YDB doesn't store timezone, so it is always utc
+            today,
+        )
 
 
 class TestWithClause(TablesTest):
