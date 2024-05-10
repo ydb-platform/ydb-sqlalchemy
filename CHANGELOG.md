@@ -1,3 +1,5 @@
+* Added support of timezone
+
 ## 0.0.1b14 ##
 * Added secondary index support
 
