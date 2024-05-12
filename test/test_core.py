@@ -83,6 +83,19 @@ class TestCrud(TablesTest):
             (5, "c"),
         ]
 
+    def test_cached_query(self, connection_no_trans: sa.Connection, connection: sa.Connection):
+        table = self.tables.test
+
+        with connection_no_trans.begin() as transaction:
+            connection_no_trans.execute(sa.insert(table).values([{"id": 1, "text": "foo"}]))
+            connection_no_trans.execute(sa.insert(table).values([{"id": 2, "text": None}]))
+            connection_no_trans.execute(sa.insert(table).values([{"id": 3, "text": "bar"}]))
+            transaction.commit()
+
+        result = connection.execute(sa.select(table)).fetchall()
+
+        assert result == [(1, "foo"), (2, None), (3, "bar")]
+
     def test_sa_crud_with_add_declare(self):
         engine = sa.create_engine(config.db_url, _add_declare_for_yql_stmt_vars=True)
         with engine.connect() as connection:
