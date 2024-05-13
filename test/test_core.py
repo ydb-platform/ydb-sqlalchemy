@@ -997,7 +997,7 @@ class TestSecondaryIndex(TestBase):
         assert cursor.one() == ("Sarah Connor", "wanted")
 
 
-class TestRootDirectory(TablesTest):
+class TestTablePathPrefix(TablesTest):
     __backend__ = True
 
     @classmethod
@@ -1013,8 +1013,8 @@ class TestRootDirectory(TablesTest):
         connection.execute(sa.insert(table).values({"id": 1}))
         connection.execute(sa.insert(root_table).values({"id": 2}))
 
-    def test_root_directory(self):
-        engine = sa.create_engine(config.db_url, connect_args={"ydb_root_directory": "/local/some_dir/nested_dir"})
+    def test_select(self):
+        engine = sa.create_engine(config.db_url, connect_args={"ydb_table_path_prefix": "/local/some_dir/nested_dir"})
         rel_table = Table("table", sa.MetaData(), sa.Column("id", sa.Integer, primary_key=True))
         abs_table = Table("/local/table", sa.MetaData(), sa.Column("id", sa.Integer, primary_key=True))
 
@@ -1026,8 +1026,10 @@ class TestRootDirectory(TablesTest):
         assert result2 == 2
 
     def test_two_engines(self):
-        create_engine = sa.create_engine(config.db_url, connect_args={"ydb_root_directory": "/local/two/engines/test"})
-        select_engine = sa.create_engine(config.db_url, connect_args={"ydb_root_directory": "/local/two"})
+        create_engine = sa.create_engine(
+            config.db_url, connect_args={"ydb_table_path_prefix": "/local/two/engines/test"}
+        )
+        select_engine = sa.create_engine(config.db_url, connect_args={"ydb_table_path_prefix": "/local/two"})
         table_to_create = Table("table", sa.MetaData(), sa.Column("id", sa.Integer, primary_key=True))
         table_to_select = Table("engines/test/table", sa.MetaData(), sa.Column("id", sa.Integer, primary_key=True))
 
@@ -1044,7 +1046,7 @@ class TestRootDirectory(TablesTest):
         assert result == 42
 
     def test_reflection(self):
-        reflection_engine = sa.create_engine(config.db_url, connect_args={"ydb_root_directory": "/local/some_dir"})
+        reflection_engine = sa.create_engine(config.db_url, connect_args={"ydb_table_path_prefix": "/local/some_dir"})
         metadata = sa.MetaData()
 
         metadata.reflect(reflection_engine)

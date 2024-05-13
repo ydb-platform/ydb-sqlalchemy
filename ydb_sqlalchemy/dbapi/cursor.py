@@ -79,7 +79,7 @@ class Cursor:
         session_pool: Union[ydb.SessionPool, ydb.aio.SessionPool],
         tx_mode: ydb.AbstractTransactionModeBuilder,
         tx_context: Optional[ydb.BaseTxContext] = None,
-        root_directory: str = "",
+        table_path_prefix: str = "",
     ):
         self.session_pool = session_pool
         self.tx_mode = tx_mode
@@ -88,7 +88,7 @@ class Cursor:
         self.arraysize = 1
         self.rows = None
         self._rows_prefetched = None
-        self.root_directory = root_directory
+        self.root_directory = table_path_prefix
 
     @_handle_ydb_errors
     def describe_table(self, abs_table_path: str) -> ydb.TableDescription:
