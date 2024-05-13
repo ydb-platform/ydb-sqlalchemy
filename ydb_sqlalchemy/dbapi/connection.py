@@ -38,6 +38,7 @@ class Connection:
         self.database = database
         self.conn_kwargs = conn_kwargs
         self.credentials = self.conn_kwargs.pop("credentials", None)
+        self.root_directory = self.conn_kwargs.pop("ydb_root_directory", "")
 
         if "ydb_session_pool" in self.conn_kwargs:  # Use session pool managed manually
             self._shared_session_pool = True
@@ -58,20 +59,22 @@ class Connection:
         self.tx_context: Optional[ydb.TxContext] = None
 
     def cursor(self):
-        return self._cursor_class(self.session_pool, self.tx_mode, self.tx_context)
+        return self._cursor_class(self.session_pool, self.tx_mode, self.tx_context, self.root_directory)
 
     def describe(self, table_path: str) -> ydb.TableDescription:
-        abs_table_path = posixpath.join(self.database, table_path)
+        abs_table_path = posixpath.join(self.database, self.root_directory, table_path)
         cursor = self.cursor()
         return cursor.describe_table(abs_table_path)
 
     def check_exists(self, table_path: str) -> ydb.SchemeEntry:
+        abs_table_path = posixpath.join(self.database, self.root_directory, table_path)
         cursor = self.cursor()
-        return cursor.check_exists(table_path)
+        return cursor.check_exists(abs_table_path)
 
     def get_table_names(self) -> List[str]:
+        abs_dir_path = posixpath.join(self.database, self.root_directory)
         cursor = self.cursor()
-        return cursor.get_table_names()
+        return [posixpath.relpath(path, abs_dir_path) for path in cursor.get_table_names(abs_dir_path)]
 
     def set_isolation_level(self, isolation_level: str):
         class IsolationSettings(NamedTuple):

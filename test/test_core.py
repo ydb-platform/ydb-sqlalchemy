@@ -995,3 +995,58 @@ class TestSecondaryIndex(TestBase):
 
         cursor = connection.execute(select_stmt)
         assert cursor.one() == ("Sarah Connor", "wanted")
+
+
+class TestRootDirectory(TablesTest):
+    __backend__ = True
+
+    @classmethod
+    def define_tables(cls, metadata: sa.MetaData):
+        Table("some_dir/nested_dir/table", metadata, sa.Column("id", sa.Integer, primary_key=True))
+        Table("table", metadata, sa.Column("id", sa.Integer, primary_key=True))
+
+    @classmethod
+    def insert_data(cls, connection: sa.Connection):
+        table = cls.tables["some_dir/nested_dir/table"]
+        root_table = cls.tables["table"]
+
+        connection.execute(sa.insert(table).values({"id": 1}))
+        connection.execute(sa.insert(root_table).values({"id": 2}))
+
+    def test_root_directory(self):
+        engine = sa.create_engine(config.db_url, connect_args={"ydb_root_directory": "/local/some_dir/nested_dir"})
+        rel_table = Table("table", sa.MetaData(), sa.Column("id", sa.Integer, primary_key=True))
+        abs_table = Table("/local/table", sa.MetaData(), sa.Column("id", sa.Integer, primary_key=True))
+
+        with engine.connect() as conn:
+            result1 = conn.execute(sa.select(rel_table)).scalar()
+            result2 = conn.execute(sa.select(abs_table)).scalar()
+
+        assert result1 == 1
+        assert result2 == 2
+
+    def test_two_engines(self):
+        create_engine = sa.create_engine(config.db_url, connect_args={"ydb_root_directory": "/local/two/engines/test"})
+        select_engine = sa.create_engine(config.db_url, connect_args={"ydb_root_directory": "/local/two"})
+        table_to_create = Table("table", sa.MetaData(), sa.Column("id", sa.Integer, primary_key=True))
+        table_to_select = Table("engines/test/table", sa.MetaData(), sa.Column("id", sa.Integer, primary_key=True))
+
+        table_to_create.create(create_engine)
+        try:
+            with create_engine.begin() as conn:
+                conn.execute(sa.insert(table_to_create).values({"id": 42}))
+
+            with select_engine.begin() as conn:
+                result = conn.execute(sa.select(table_to_select)).scalar()
+        finally:
+            table_to_create.drop(create_engine)
+
+        assert result == 42
+
+    def test_reflection(self):
+        reflection_engine = sa.create_engine(config.db_url, connect_args={"ydb_root_directory": "/local/some_dir"})
+        metadata = sa.MetaData()
+
+        metadata.reflect(reflection_engine)
+
+        assert "nested_dir/table" in metadata.tables
