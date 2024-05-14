@@ -3,6 +3,7 @@ import dataclasses
 import functools
 import itertools
 import logging
+import posixpath
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Union
 
 import ydb
@@ -78,6 +79,7 @@ class Cursor:
         session_pool: Union[ydb.SessionPool, ydb.aio.SessionPool],
         tx_mode: ydb.AbstractTransactionModeBuilder,
         tx_context: Optional[ydb.BaseTxContext] = None,
+        table_path_prefix: str = "",
     ):
         self.session_pool = session_pool
         self.tx_mode = tx_mode
@@ -86,33 +88,36 @@ class Cursor:
         self.arraysize = 1
         self.rows = None
         self._rows_prefetched = None
+        self.root_directory = table_path_prefix
 
     @_handle_ydb_errors
     def describe_table(self, abs_table_path: str) -> ydb.TableDescription:
         return self._retry_operation_in_pool(self._describe_table, abs_table_path)
 
-    def check_exists(self, table_path: str) -> bool:
+    def check_exists(self, abs_table_path: str) -> bool:
         try:
-            self._retry_operation_in_pool(self._describe_path, table_path)
+            self._retry_operation_in_pool(self._describe_path, abs_table_path)
             return True
         except ydb.SchemeError:
             return False
 
     @_handle_ydb_errors
-    def get_table_names(self) -> List[str]:
-        directory: ydb.Directory = self._retry_operation_in_pool(self._list_directory)
-        return [child.name for child in directory.children if child.is_table()]
+    def get_table_names(self, abs_dir_path: str) -> List[str]:
+        directory: ydb.Directory = self._retry_operation_in_pool(self._list_directory, abs_dir_path)
+        result = []
+        for child in directory.children:
+            child_abs_path = posixpath.join(abs_dir_path, child.name)
+            if child.is_table():
+                result.append(child_abs_path)
+            elif child.is_directory() and not child.name.startswith("."):
+                result.extend(self.get_table_names(child_abs_path))
+        return result
 
     def execute(self, operation: YdbQuery, parameters: Optional[Mapping[str, Any]] = None):
-        if operation.is_ddl or not operation.parameters_types:
-            query = operation.yql_text
-            is_ddl = operation.is_ddl
-        else:
-            query = ydb.DataQuery(operation.yql_text, operation.parameters_types)
-            is_ddl = operation.is_ddl
+        query = self._get_ydb_query(operation)
 
         logger.info("execute sql: %s, params: %s", query, parameters)
-        if is_ddl:
+        if operation.is_ddl:
             chunks = self._execute_ddl(query)
         else:
             chunks = self._execute_dml(query, parameters)
@@ -129,6 +134,15 @@ class Cursor:
             rows = itertools.chain(self.rows, rows)
 
         self.rows = rows
+
+    def _get_ydb_query(self, operation: YdbQuery) -> Union[ydb.DataQuery, str]:
+        pragma = ""
+        if self.root_directory:
+            pragma = f'PRAGMA TablePathPrefix = "{self.root_directory}";\n'
+        if operation.is_ddl or not operation.parameters_types:
+            return pragma + operation.yql_text
+
+        return ydb.DataQuery(pragma + operation.yql_text, operation.parameters_types)
 
     @_handle_ydb_errors
     def _execute_dml(
@@ -163,8 +177,8 @@ class Cursor:
         return session._driver.scheme_client.describe_path(table_path)
 
     @staticmethod
-    def _list_directory(session: ydb.Session) -> ydb.Directory:
-        return session._driver.scheme_client.list_directory(session._driver._driver_config.database)
+    def _list_directory(session: ydb.Session, abs_dir_path: str) -> ydb.Directory:
+        return session._driver.scheme_client.list_directory(abs_dir_path)
 
     @staticmethod
     def _prepare(session: ydb.Session, query: str) -> ydb.DataQuery:
@@ -264,12 +278,12 @@ class AsyncCursor(Cursor):
         return await session.describe_table(abs_table_path)
 
     @staticmethod
-    async def _describe_path(session: ydb.aio.table.Session, table_path: str) -> ydb.SchemeEntry:
-        return await session._driver.scheme_client.describe_path(table_path)
+    async def _describe_path(session: ydb.aio.table.Session, abs_table_path: str) -> ydb.SchemeEntry:
+        return await session._driver.scheme_client.describe_path(abs_table_path)
 
     @staticmethod
-    async def _list_directory(session: ydb.aio.table.Session) -> ydb.Directory:
-        return await session._driver.scheme_client.list_directory(session._driver._driver_config.database)
+    async def _list_directory(session: ydb.aio.table.Session, abs_dir_path: str) -> ydb.Directory:
+        return await session._driver.scheme_client.list_directory(abs_dir_path)
 
     @staticmethod
     async def _execute_scheme(session: ydb.aio.table.Session, query: str) -> ydb.convert.ResultSets:

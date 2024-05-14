@@ -1,6 +1,7 @@
+from types import MethodType
+
 import pytest
 import sqlalchemy as sa
-from types import MethodType
 from sqlalchemy import Column, Integer, Unicode
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.testing.fixtures import TablesTest, config
