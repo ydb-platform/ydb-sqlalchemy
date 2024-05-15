@@ -1,3 +1,5 @@
+* Fixed false cache hit
+
 ## 0.0.1b16 ##
 * Added ydb_table_path_prefix parameter
 
