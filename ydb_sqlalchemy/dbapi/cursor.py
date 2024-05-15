@@ -1,6 +1,7 @@
 import collections.abc
 import dataclasses
 import functools
+import hashlib
 import itertools
 import logging
 import posixpath
@@ -139,10 +140,29 @@ class Cursor:
         pragma = ""
         if self.root_directory:
             pragma = f'PRAGMA TablePathPrefix = "{self.root_directory}";\n'
-        if operation.is_ddl or not operation.parameters_types:
-            return pragma + operation.yql_text
 
-        return ydb.DataQuery(pragma + operation.yql_text, operation.parameters_types)
+        yql_with_pragma = pragma + operation.yql_text
+
+        if operation.is_ddl or not operation.parameters_types:
+            return yql_with_pragma
+
+        return self._make_data_query(yql_with_pragma, operation.parameters_types)
+
+    def _make_data_query(
+        self,
+        yql_text: str,
+        parameters_types: Dict[str, Union[ydb.PrimitiveType, ydb.AbstractTypeBuilder]],
+    ) -> ydb.DataQuery:
+        """
+        ydb.DataQuery uses hashed SQL text as cache key, which may cause issues if parameters change type within
+        the same session, so we include parameter types to the key to prevent false positive cache hit.
+        """
+
+        sorted_parameters = sorted(parameters_types.items())  # dict keys are unique, so the sorting is stable
+
+        yql_with_params = yql_text + "".join([k + str(v) for k, v in sorted_parameters])
+        name = hashlib.sha256(yql_with_params.encode("utf-8")).hexdigest()
+        return ydb.DataQuery(yql_text, parameters_types, name=name)
 
     @_handle_ydb_errors
     def _execute_dml(
