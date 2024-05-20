@@ -16,7 +16,7 @@ $ pip install -U .
 
 ## Getting started
 
-Connect to local YDB throw SqlAlchemy:
+Connect to local YDB using SqlAlchemy:
 
 ```python3
 import sqlalchemy as sa
@@ -34,12 +34,12 @@ with engine.connect() as conn:
 
 ### Run Tests:
 
-For run local YDB throw docker, run in source root:
+Run the command from the root directory of the repository to start YDB in a local docker container.
 ```bash
 $ docker-compose up
 ```
 
-For run all tests from source root make:
+To run all tests execute the command from the root directory of the repository:
 ```bash
 $ tox -e test-all
 ```
