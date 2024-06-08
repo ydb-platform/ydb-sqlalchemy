@@ -94,41 +94,36 @@ class BaseDBApiTestSuit:
         with pytest.raises(dbapi.InterfaceError):
             dbapi.YdbDBApi().connect("localhost:2136", database="/local666")
 
-        cur = connection.cursor()
+        with connection.cursor() as cur:
+            with suppress(dbapi.DatabaseError):
+                cur.execute(dbapi.YdbQuery("DROP TABLE test", is_ddl=True))
 
-        with suppress(dbapi.DatabaseError):
-            cur.execute(dbapi.YdbQuery("DROP TABLE test", is_ddl=True))
+            with pytest.raises(dbapi.DataError):
+                cur.execute(dbapi.YdbQuery("SELECT 18446744073709551616"))
 
-        with pytest.raises(dbapi.DataError):
-            cur.execute(dbapi.YdbQuery("SELECT 18446744073709551616"))
+            with pytest.raises(dbapi.DataError):
+                cur.execute(dbapi.YdbQuery("SELECT * FROM 拉屎"))
 
-        with pytest.raises(dbapi.DataError):
-            cur.execute(dbapi.YdbQuery("SELECT * FROM 拉屎"))
+            with pytest.raises(dbapi.DataError):
+                cur.execute(dbapi.YdbQuery("SELECT floor(5 / 2)"))
 
-        with pytest.raises(dbapi.DataError):
-            cur.execute(dbapi.YdbQuery("SELECT floor(5 / 2)"))
+            with pytest.raises(dbapi.ProgrammingError):
+                cur.execute(dbapi.YdbQuery("SELECT * FROM test"))
 
-        with pytest.raises(dbapi.ProgrammingError):
-            cur.execute(dbapi.YdbQuery("SELECT * FROM test"))
+            cur.execute(dbapi.YdbQuery("CREATE TABLE test(id Int64, PRIMARY KEY (id))", is_ddl=True))
 
-        cur.execute(dbapi.YdbQuery("CREATE TABLE test(id Int64, PRIMARY KEY (id))", is_ddl=True))
-
-        cur.execute(dbapi.YdbQuery("INSERT INTO test(id) VALUES(1)"))
-        with pytest.raises(dbapi.IntegrityError):
             cur.execute(dbapi.YdbQuery("INSERT INTO test(id) VALUES(1)"))
+            with pytest.raises(dbapi.IntegrityError):
+                cur.execute(dbapi.YdbQuery("INSERT INTO test(id) VALUES(1)"))
 
-        cur.execute(dbapi.YdbQuery("DROP TABLE test", is_ddl=True))
-        cur.close()
+            cur.execute(dbapi.YdbQuery("DROP TABLE test", is_ddl=True))
 
 
 class TestSyncConnection(BaseDBApiTestSuit):
     @pytest.fixture
     def sync_connection(self) -> dbapi.Connection:
-        conn = dbapi.YdbDBApi().connect(host="localhost", port="2136", database="/local")
-        try:
+        with dbapi.YdbDBApi().connect(host="localhost", port="2136", database="/local") as conn:
             yield conn
-        finally:
-            conn.close()
 
     @pytest.mark.parametrize(
         "isolation_level, read_only",

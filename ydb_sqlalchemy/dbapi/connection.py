@@ -134,6 +134,12 @@ class Connection:
             self._maybe_await(self.session_pool.release, self.tx_context.session)
             self.tx_context = None
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.close()
+
     def close(self):
         self.rollback()
         if not self._shared_session_pool:

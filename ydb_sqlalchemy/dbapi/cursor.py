@@ -281,6 +281,12 @@ class Cursor:
     def setoutputsize(self, column=None):
         pass
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.close()
+
     def close(self):
         self.rows = None
         self._rows_prefetched = None
