@@ -122,6 +122,14 @@ class BaseDBApiTestSuit:
 class TestSyncConnection(BaseDBApiTestSuit):
     @pytest.fixture
     def sync_connection(self) -> dbapi.Connection:
+        conn = dbapi.YdbDBApi().connect(host="localhost", port="2136", database="/local")
+        try:
+            yield conn
+        finally:
+            conn.close()
+
+    @pytest.fixture
+    def sync_connection_with_cm(self) -> dbapi.Connection:
         with dbapi.YdbDBApi().connect(host="localhost", port="2136", database="/local") as conn:
             yield conn
 
@@ -136,8 +144,8 @@ class TestSyncConnection(BaseDBApiTestSuit):
             (dbapi.IsolationLevel.SNAPSHOT_READONLY, True),
         ],
     )
-    def test_isolation_level_read_only(self, isolation_level: str, read_only: bool, sync_connection: dbapi.Connection):
-        self._test_isolation_level_read_only(sync_connection, isolation_level, read_only)
+    def test_isolation_level_read_only(self, isolation_level: str, read_only: bool, sync_connection_with_cm: dbapi.Connection):
+        self._test_isolation_level_read_only(sync_connection_with_cm, isolation_level, read_only)
 
     def test_connection(self, sync_connection: dbapi.Connection):
         self._test_connection(sync_connection)
