@@ -144,8 +144,9 @@ class TestSyncConnection(BaseDBApiTestSuit):
             (dbapi.IsolationLevel.SNAPSHOT_READONLY, True),
         ],
     )
-    def test_isolation_level_read_only(self, isolation_level: str, read_only: bool,
-                                       sync_connection_with_cm: dbapi.Connection):
+    def test_isolation_level_read_only(
+            self, isolation_level: str, read_only: bool, sync_connection_with_cm: dbapi.Connection
+    ):
         self._test_isolation_level_read_only(sync_connection_with_cm, isolation_level, read_only)
 
     def test_connection(self, sync_connection: dbapi.Connection):
