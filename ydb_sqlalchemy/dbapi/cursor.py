@@ -304,7 +304,7 @@ class Cursor:
         return self.execute(script)
 
     def fetchone(self):
-        return next(self.rows or [], None)
+        return next(self.rows or iter([]), None)
 
     def fetchmany(self, size=None):
         return list(itertools.islice(self.rows, size or self.arraysize))

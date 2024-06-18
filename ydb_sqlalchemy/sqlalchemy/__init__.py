@@ -560,7 +560,7 @@ def _get_column_info(t):
 
 class YdbScanQueryCharacteristic(characteristics.ConnectionCharacteristic):
     def reset_characteristic(self, dialect: "YqlDialect", dbapi_connection: dbapi.Connection) -> None:
-        dialect.reset_isolation_level(dbapi_connection)
+        dialect.reset_ydb_scan_query(dbapi_connection)
 
     def set_characteristic(self, dialect: "YqlDialect", dbapi_connection: dbapi.Connection, value: bool) -> None:
         dialect.set_ydb_scan_query(dbapi_connection, value)
@@ -745,7 +745,7 @@ class YqlDialect(StrCompileDialect):
     def set_ydb_scan_query(self, dbapi_connection: dbapi.Connection, value: bool) -> None:
         dbapi_connection.set_ydb_scan_query(value)
 
-    def reset_isolation_level(self, dbapi_connection: dbapi.Connection):
+    def reset_ydb_scan_query(self, dbapi_connection: dbapi.Connection):
         self.set_ydb_scan_query(dbapi_connection, False)
 
     def get_ydb_scan_query(self, dbapi_connection: dbapi.Connection) -> str:
