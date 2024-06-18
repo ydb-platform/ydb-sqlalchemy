@@ -564,7 +564,7 @@ class YqlDialect(StrCompileDialect):
     supports_alter = False
     max_identifier_length = 63
     supports_sane_rowcount = False
-    supports_statement_cache = False
+    supports_statement_cache = True
 
     supports_native_enum = False
     supports_native_boolean = True
@@ -829,7 +829,7 @@ class YqlDialect(StrCompileDialect):
 class AsyncYqlDialect(YqlDialect):
     driver = "ydb_async"
     is_async = True
-    supports_statement_cache = False
+    supports_statement_cache = True
 
     def connect(self, *cargs, **cparams):
         return self.loaded_dbapi.async_connect(*cargs, **cparams)
