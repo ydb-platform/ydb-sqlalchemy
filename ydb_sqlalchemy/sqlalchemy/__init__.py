@@ -9,7 +9,8 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Type, Un
 
 import sqlalchemy as sa
 import ydb
-from sqlalchemy.engine import reflection
+from sqlalchemy import util
+from sqlalchemy.engine import characteristics, reflection
 from sqlalchemy.engine.default import DefaultExecutionContext, StrCompileDialect
 from sqlalchemy.exc import CompileError, NoSuchTableError
 from sqlalchemy.sql import functions, literal_column
@@ -557,6 +558,17 @@ def _get_column_info(t):
     return COLUMN_TYPES[t], nullable
 
 
+class YdbScanQueryCharacteristic(characteristics.ConnectionCharacteristic):
+    def reset_characteristic(self, dialect: "YqlDialect", dbapi_connection: dbapi.Connection) -> None:
+        dialect.reset_isolation_level(dbapi_connection)
+
+    def set_characteristic(self, dialect: "YqlDialect", dbapi_connection: dbapi.Connection, value: bool) -> None:
+        dialect.set_ydb_scan_query(dbapi_connection, value)
+
+    def get_characteristic(self, dialect: "YqlDialect", dbapi_connection: dbapi.Connection) -> Any:
+        dialect.get_ydb_scan_query(dbapi_connection)
+
+
 class YqlDialect(StrCompileDialect):
     name = "yql"
     driver = "ydb"
@@ -599,6 +611,13 @@ class YqlDialect(StrCompileDialect):
         sa.types.JSON.JSONPathType: types.YqlJSON.YqlJSONPathType,
         sa.types.DateTime: types.YqlDateTime,
     }
+
+    connection_characteristics = util.immutabledict(
+        {
+            "isolation_level": characteristics.IsolationLevelCharacteristic(),
+            "ydb_scan_query": YdbScanQueryCharacteristic(),
+        }
+    )
 
     construct_arguments = [
         (
@@ -722,6 +741,15 @@ class YqlDialect(StrCompileDialect):
 
     def get_isolation_level(self, dbapi_connection: dbapi.Connection) -> str:
         return dbapi_connection.get_isolation_level()
+
+    def set_ydb_scan_query(self, dbapi_connection: dbapi.Connection, value: bool) -> None:
+        dbapi_connection.set_ydb_scan_query(value)
+
+    def reset_isolation_level(self, dbapi_connection: dbapi.Connection):
+        self.set_ydb_scan_query(dbapi_connection, False)
+
+    def get_ydb_scan_query(self, dbapi_connection: dbapi.Connection) -> str:
+        return dbapi_connection.get_ydb_scan_query()
 
     def connect(self, *cargs, **cparams):
         return self.loaded_dbapi.connect(*cargs, **cparams)
