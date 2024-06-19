@@ -442,6 +442,85 @@ class TestWithClause(TablesTest):
         assert desc.partitioning_settings.max_partitions_count == 5
 
 
+class TestScanQuery(TablesTest):
+    __backend__ = True
+
+    @classmethod
+    def define_tables(cls, metadata: sa.MetaData):
+        Table(
+            "test",
+            metadata,
+            Column("id", Integer, primary_key=True),
+        )
+
+    @classmethod
+    def insert_data(cls, connection: sa.Connection):
+        table = cls.tables.test
+        for i in range(50):
+            connection.execute(ydb_sa.upsert(table).values([{"id": i * 1000 + j} for j in range(1000)]))
+
+    def test_characteristic(self):
+        engine = self.bind.execution_options()
+
+        with engine.connect() as connection:
+            default_options = connection.get_execution_options()
+
+        with engine.connect() as connection:
+            connection.execution_options(ydb_scan_query=True)
+            options_after_set = connection.get_execution_options()
+
+        with engine.connect() as connection:
+            options_after_reset = connection.get_execution_options()
+
+        assert "ydb_scan_query" not in default_options
+        assert options_after_set["ydb_scan_query"]
+        assert "ydb_scan_query" not in options_after_reset
+
+    def test_fetchmany(self, connection_no_trans: sa.Connection):
+        table = self.tables.test
+        stmt = sa.select(table).where(table.c.id % 2 == 0)
+
+        connection_no_trans.execution_options(ydb_scan_query=True)
+        cursor = connection_no_trans.execute(stmt)
+
+        assert cursor.cursor.use_scan_query
+        result = cursor.fetchmany(1000)  # fetches only the first 5k rows
+        assert result == [(i,) for i in range(2000) if i % 2 == 0]
+
+    def test_fetchall(self, connection_no_trans: sa.Connection):
+        table = self.tables.test
+        stmt = sa.select(table).where(table.c.id % 2 == 0)
+
+        connection_no_trans.execution_options(ydb_scan_query=True)
+        cursor = connection_no_trans.execute(stmt)
+
+        assert cursor.cursor.use_scan_query
+        result = cursor.fetchall()
+        assert result == [(i,) for i in range(50000) if i % 2 == 0]
+
+    def test_begin_does_nothing(self, connection_no_trans: sa.Connection):
+        table = self.tables.test
+        connection_no_trans.execution_options(ydb_scan_query=True)
+
+        with connection_no_trans.begin():
+            cursor = connection_no_trans.execute(sa.select(table))
+
+            assert cursor.cursor.use_scan_query
+            assert cursor.cursor.tx_context is None
+
+    def test_engine_option(self):
+        table = self.tables.test
+        engine = self.bind.execution_options(ydb_scan_query=True)
+
+        with engine.begin() as connection:
+            cursor = connection.execute(sa.select(table))
+            assert cursor.cursor.use_scan_query
+
+        with engine.begin() as connection:
+            cursor = connection.execute(sa.select(table))
+            assert cursor.cursor.use_scan_query
+
+
 class TestTransaction(TablesTest):
     __backend__ = True
 
