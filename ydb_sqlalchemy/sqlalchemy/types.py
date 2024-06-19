@@ -43,11 +43,16 @@ class ListType(ARRAY):
     __visit_name__ = "list_type"
 
 
+class HashableDict(dict):
+    def __hash__(self):
+        return hash(tuple(self.items()))
+
+
 class StructType(types.TypeEngine[Mapping[str, Any]]):
     __visit_name__ = "struct_type"
 
     def __init__(self, fields_types: Mapping[str, Union[Type[types.TypeEngine], Type[types.TypeDecorator]]]):
-        self.fields_types = fields_types
+        self.fields_types = HashableDict(dict(sorted(fields_types.items())))
 
     @property
     def python_type(self):
