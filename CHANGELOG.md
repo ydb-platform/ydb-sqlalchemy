@@ -1,3 +1,4 @@
+## 0.0.1b18 ##
 * Supprted scan query
 * Added use sqlalchemy cache query text internally
 
