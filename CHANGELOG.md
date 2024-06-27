@@ -1,3 +1,4 @@
+## 0.0.1b19 ##
 * Do not use set for columns in index, use dict (preserve order)
 
 ## 0.0.1b18 ##
