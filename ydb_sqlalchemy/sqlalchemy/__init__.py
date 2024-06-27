@@ -469,10 +469,11 @@ class YqlDDLCompiler(DDLCompiler):
 
         text += " SYNC" if not ydb_opts.get("async", False) else " ASYNC"
 
-        columns = {self.preparer.format_column(col) for col in index.columns.values()}
-        cover_columns = {
+        columns = [self.preparer.format_column(col) for col in index.columns.values()]
+        cover_columns = [
             col if isinstance(col, str) else self.preparer.format_column(col) for col in ydb_opts.get("cover", [])
-        }
+        ]
+        cover_columns = list(dict.fromkeys(cover_columns))  # dict preserves order
 
         text += " ON (" + ", ".join(columns) + ")"
 
