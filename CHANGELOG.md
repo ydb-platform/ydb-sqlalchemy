@@ -1,3 +1,5 @@
+* Do not use set for columns in index, use dict (preserve order)
+
 ## 0.0.1b18 ##
 * Supprted scan query
 * Added use sqlalchemy cache query text internally
