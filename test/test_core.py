@@ -253,6 +253,16 @@ class TestTypes(TablesTest):
         assert result == (b"Uint8", b"Uint16", b"Uint32", b"Uint64", b"Int8", b"Int16", b"Int32", b"Int64")
 
     def test_datetime_types(self, connection: sa.Connection):
+        stmt = sa.Select(
+            sa.func.FormatType(sa.func.TypeOf(sa.bindparam("p_datetime", datetime.datetime.now(), sa.DateTime))),
+            sa.func.FormatType(sa.func.TypeOf(sa.bindparam("p_DATETIME", datetime.datetime.now(), sa.DATETIME))),
+            sa.func.FormatType(sa.func.TypeOf(sa.bindparam("p_TIMESTAMP", datetime.datetime.now(), sa.TIMESTAMP))),
+        )
+
+        result = connection.execute(stmt).fetchone()
+        assert result == (b"Timestamp", b"Datetime", b"Timestamp")
+
+    def test_datetime_types_timezone(self, connection: sa.Connection):
         table = self.tables.test_datetime_types
 
         now_dt = datetime.datetime.now()
