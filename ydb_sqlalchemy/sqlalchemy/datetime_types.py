@@ -11,11 +11,11 @@ class YqlTimestamp(sqltypes.DateTime):
         def process(value: Optional[datetime.datetime]) -> Optional[datetime.datetime]:
             if value is None:
                 return None
+            if not self.timezone:
+                return value
             return value.replace(tzinfo=datetime.timezone.utc)
 
-        if self.timezone:
-            return process
-        return None
+        return process
 
 
 class YqlDateTime(YqlTimestamp):
@@ -23,6 +23,8 @@ class YqlDateTime(YqlTimestamp):
         def process(value: Optional[datetime.datetime]) -> Optional[int]:
             if value is None:
                 return None
+            if not self.timezone:  # if timezone is disabled, consider it as utc
+                value = value.replace(tzinfo=datetime.timezone.utc)
             return int(value.timestamp())
 
         return process
