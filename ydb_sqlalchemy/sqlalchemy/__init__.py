@@ -132,8 +132,8 @@ class YqlTypeCompiler(StrSQLTypeCompiler):
     def visit_BLOB(self, type_: sa.BLOB, **kw):
         return "String"
 
-    def visit_datetime(self, type_: sa.DATETIME, **kw):
-        return self.visit_DATETIME(type_, **kw)
+    def visit_datetime(self, type_: sa.TIMESTAMP, **kw):
+        return self.visit_TIMESTAMP(type_, **kw)
 
     def visit_DATETIME(self, type_: sa.DATETIME, **kw):
         return "DateTime"
@@ -204,7 +204,7 @@ class YqlTypeCompiler(StrSQLTypeCompiler):
         elif isinstance(type_, sa.TIMESTAMP):
             ydb_type = ydb.PrimitiveType.Timestamp
         elif isinstance(type_, sa.DateTime):
-            ydb_type = ydb.PrimitiveType.Datetime
+            ydb_type = ydb.PrimitiveType.Timestamp
         elif isinstance(type_, sa.Date):
             ydb_type = ydb.PrimitiveType.Date
         elif isinstance(type_, sa.BINARY):
@@ -619,7 +619,7 @@ class YqlDialect(StrCompileDialect):
     colspecs = {
         sa.types.JSON: types.YqlJSON,
         sa.types.JSON.JSONPathType: types.YqlJSON.YqlJSONPathType,
-        sa.types.DateTime: types.YqlDateTime,
+        sa.types.DateTime: types.YqlTimestamp,  # Because YDB's DateTime doesn't store microseconds
         sa.types.DATETIME: types.YqlDateTime,
         sa.types.TIMESTAMP: types.YqlTimestamp,
     }

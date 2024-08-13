@@ -260,7 +260,7 @@ class TestTypes(TablesTest):
         )
 
         result = connection.execute(stmt).fetchone()
-        assert result == (b"Datetime", b"Datetime", b"Timestamp")
+        assert result == (b"Timestamp", b"Datetime", b"Timestamp")
 
     def test_datetime_types_timezone(self, connection: sa.Connection):
         table = self.tables.test_datetime_types
