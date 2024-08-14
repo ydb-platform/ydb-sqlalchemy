@@ -213,8 +213,8 @@ class TestTypes(TablesTest):
         Table(
             "test_datetime_types",
             metadata,
-            Column("datetime", sa.DateTime, primary_key=True),
-            Column("datetime_tz", sa.DateTime(timezone=True)),
+            Column("datetime", sa.DATETIME, primary_key=True),
+            Column("datetime_tz", sa.DATETIME(timezone=True)),
             Column("timestamp", sa.TIMESTAMP),
             Column("timestamp_tz", sa.TIMESTAMP(timezone=True)),
             Column("date", sa.Date),
@@ -253,17 +253,30 @@ class TestTypes(TablesTest):
         assert result == (b"Uint8", b"Uint16", b"Uint32", b"Uint64", b"Int8", b"Int16", b"Int32", b"Int64")
 
     def test_datetime_types(self, connection: sa.Connection):
-        table = self.tables.test_datetime_types
+        stmt = sa.Select(
+            sa.func.FormatType(sa.func.TypeOf(sa.bindparam("p_datetime", datetime.datetime.now(), sa.DateTime))),
+            sa.func.FormatType(sa.func.TypeOf(sa.bindparam("p_DATETIME", datetime.datetime.now(), sa.DATETIME))),
+            sa.func.FormatType(sa.func.TypeOf(sa.bindparam("p_TIMESTAMP", datetime.datetime.now(), sa.TIMESTAMP))),
+        )
 
-        now_dt = datetime.datetime.now()
-        now_dt_tz = now_dt.replace(tzinfo=datetime.timezone(datetime.timedelta(hours=3, minutes=42)))
-        today = now_dt.date()
+        result = connection.execute(stmt).fetchone()
+        assert result == (b"Timestamp", b"Datetime", b"Timestamp")
+
+    def test_datetime_types_timezone(self, connection: sa.Connection):
+        table = self.tables.test_datetime_types
+        tzinfo = datetime.timezone(datetime.timedelta(hours=3, minutes=42))
+
+        timestamp_value = datetime.datetime.now()
+        timestamp_value_tz = timestamp_value.replace(tzinfo=tzinfo)
+        datetime_value = timestamp_value.replace(microsecond=0)
+        datetime_value_tz = timestamp_value_tz.replace(microsecond=0)
+        today = timestamp_value.date()
 
         statement = sa.insert(table).values(
-            datetime=now_dt,
-            datetime_tz=now_dt_tz,
-            timestamp=now_dt,
-            timestamp_tz=now_dt_tz,
+            datetime=datetime_value,
+            datetime_tz=datetime_value_tz,
+            timestamp=timestamp_value,
+            timestamp_tz=timestamp_value_tz,
             date=today,
             # interval=datetime.timedelta(minutes=45),
         )
@@ -271,12 +284,11 @@ class TestTypes(TablesTest):
 
         row = connection.execute(sa.select(table)).fetchone()
 
-        now_dt_tz_utc = now_dt.replace(tzinfo=datetime.timezone.utc) - datetime.timedelta(hours=3, minutes=42)
         assert row == (
-            now_dt,
-            now_dt_tz_utc,  # YDB doesn't store timezone, so it is always utc
-            now_dt,
-            now_dt_tz_utc,  # YDB doesn't store timezone, so it is always utc
+            datetime_value,
+            datetime_value_tz.astimezone(datetime.timezone.utc),  # YDB doesn't store timezone, so it is always utc
+            timestamp_value,
+            timestamp_value_tz.astimezone(datetime.timezone.utc),  # YDB doesn't store timezone, so it is always utc
             today,
         )
 

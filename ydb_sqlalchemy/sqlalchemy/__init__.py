@@ -132,7 +132,13 @@ class YqlTypeCompiler(StrSQLTypeCompiler):
     def visit_BLOB(self, type_: sa.BLOB, **kw):
         return "String"
 
-    def visit_DATETIME(self, type_: sa.TIMESTAMP, **kw):
+    def visit_datetime(self, type_: sa.TIMESTAMP, **kw):
+        return self.visit_TIMESTAMP(type_, **kw)
+
+    def visit_DATETIME(self, type_: sa.DATETIME, **kw):
+        return "DateTime"
+
+    def visit_TIMESTAMP(self, type_: sa.TIMESTAMP, **kw):
         return "Timestamp"
 
     def visit_list_type(self, type_: types.ListType, **kw):
@@ -193,7 +199,10 @@ class YqlTypeCompiler(StrSQLTypeCompiler):
         elif isinstance(type_, types.YqlJSON.YqlJSONPathType):
             ydb_type = ydb.PrimitiveType.Utf8
         # Json
-
+        elif isinstance(type_, sa.DATETIME):
+            ydb_type = ydb.PrimitiveType.Datetime
+        elif isinstance(type_, sa.TIMESTAMP):
+            ydb_type = ydb.PrimitiveType.Timestamp
         elif isinstance(type_, sa.DateTime):
             ydb_type = ydb.PrimitiveType.Timestamp
         elif isinstance(type_, sa.Date):
@@ -540,7 +549,7 @@ COLUMN_TYPES = {
     ydb.PrimitiveType.Yson: sa.TEXT,
     ydb.PrimitiveType.Date: sa.DATE,
     ydb.PrimitiveType.Datetime: sa.DATETIME,
-    ydb.PrimitiveType.Timestamp: sa.DATETIME,
+    ydb.PrimitiveType.Timestamp: sa.TIMESTAMP,
     ydb.PrimitiveType.Interval: sa.INTEGER,
     ydb.PrimitiveType.Bool: sa.BOOLEAN,
     ydb.PrimitiveType.DyNumber: sa.TEXT,
@@ -610,7 +619,9 @@ class YqlDialect(StrCompileDialect):
     colspecs = {
         sa.types.JSON: types.YqlJSON,
         sa.types.JSON.JSONPathType: types.YqlJSON.YqlJSONPathType,
-        sa.types.DateTime: types.YqlDateTime,
+        sa.types.DateTime: types.YqlTimestamp,  # Because YDB's DateTime doesn't store microseconds
+        sa.types.DATETIME: types.YqlDateTime,
+        sa.types.TIMESTAMP: types.YqlTimestamp,
     }
 
     connection_characteristics = util.immutabledict(
