@@ -13,7 +13,7 @@ from sqlalchemy import util
 from sqlalchemy.engine import characteristics, reflection
 from sqlalchemy.engine.default import DefaultExecutionContext, StrCompileDialect
 from sqlalchemy.exc import CompileError, NoSuchTableError
-from sqlalchemy.sql import functions, literal_column
+from sqlalchemy.sql import ddl, functions, literal_column
 from sqlalchemy.sql.compiler import (
     DDLCompiler,
     IdentifierPreparer,
@@ -462,7 +462,7 @@ class YqlCompiler(StrSQLCompiler):
 
 
 class YqlDDLCompiler(DDLCompiler):
-    def visit_create_index(self, create, include_schema=False, include_table_schema=True, **kw) -> str:
+    def visit_create_index(self, create: ddl.CreateIndex, **kw) -> str:
         index: sa.Index = create.element
         ydb_opts = index.dialect_options.get("ydb", {})
 
@@ -491,7 +491,7 @@ class YqlDDLCompiler(DDLCompiler):
 
         return text
 
-    def visit_drop_index(self, drop, include_schema=False, include_table_schema=True, **kw) -> str:
+    def visit_drop_index(self, drop: ddl.DropIndex, **kw) -> str:
         index: sa.Index = drop.element
 
         self._verify_index_table(index)
