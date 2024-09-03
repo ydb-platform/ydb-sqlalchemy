@@ -1,3 +1,5 @@
+* Add support of DROP INDEX statement
+
 ## 0.0.1b20 ##
 * sqlalchemy's DATETIME type now rendered as YDB's Datetime instead of Timestamp
 
