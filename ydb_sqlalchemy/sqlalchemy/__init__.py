@@ -13,7 +13,7 @@ from sqlalchemy import util
 from sqlalchemy.engine import characteristics, reflection
 from sqlalchemy.engine.default import DefaultExecutionContext, StrCompileDialect
 from sqlalchemy.exc import CompileError, NoSuchTableError
-from sqlalchemy.sql import functions, literal_column
+from sqlalchemy.sql import ddl, functions, literal_column
 from sqlalchemy.sql.compiler import (
     DDLCompiler,
     IdentifierPreparer,
@@ -462,7 +462,7 @@ class YqlCompiler(StrSQLCompiler):
 
 
 class YqlDDLCompiler(DDLCompiler):
-    def visit_create_index(self, create, include_schema=False, include_table_schema=True, **kw):
+    def visit_create_index(self, create: ddl.CreateIndex, **kw) -> str:
         index: sa.Index = create.element
         ydb_opts = index.dialect_options.get("ydb", {})
 
@@ -490,6 +490,16 @@ class YqlDDLCompiler(DDLCompiler):
             text += " COVER (" + ", ".join(cover_columns) + ")"
 
         return text
+
+    def visit_drop_index(self, drop: ddl.DropIndex, **kw) -> str:
+        index: sa.Index = drop.element
+
+        self._verify_index_table(index)
+
+        table_name = self.preparer.format_table(index.table)
+        index_name = self._prepared_index_name(index)
+
+        return f"ALTER TABLE {table_name} DROP INDEX {index_name}"
 
     def post_create_table(self, table: sa.Table) -> str:
         ydb_opts = table.dialect_options["ydb"]

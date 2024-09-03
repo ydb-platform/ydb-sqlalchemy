@@ -1100,6 +1100,25 @@ class TestSecondaryIndex(TestBase):
         cursor = connection.execute(select_stmt)
         assert cursor.one() == ("Sarah Connor", "wanted")
 
+    def test_index_deletion(self, connection: sa.Connection, metadata: sa.MetaData):
+        persons = Table(
+            "test_index_deletion/persons",
+            metadata,
+            sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column("tax_number", sa.Integer()),
+            sa.Column("full_name", sa.Unicode()),
+        )
+        persons.create(connection)
+        index = sa.Index("ix_tax_number", "tax_number", _table=persons)
+        index.create(connection)
+        indexes = sa.inspect(connection).get_indexes(persons.name)
+        assert len(indexes) == 1
+
+        index.drop(connection)
+
+        indexes = sa.inspect(connection).get_indexes(persons.name)
+        assert len(indexes) == 0
+
 
 class TestTablePathPrefix(TablesTest):
     __backend__ = True
