@@ -3,7 +3,6 @@ import dataclasses
 import functools
 import hashlib
 import itertools
-import logging
 import posixpath
 from collections.abc import AsyncIterator
 from typing import (
@@ -30,8 +29,6 @@ from .errors import (
     OperationalError,
     ProgrammingError,
 )
-
-logger = logging.getLogger(__name__)
 
 
 def get_column_type(type_obj: Any) -> str:
@@ -131,7 +128,6 @@ class Cursor:
     def execute(self, operation: YdbQuery, parameters: Optional[Mapping[str, Any]] = None):
         query = self._get_ydb_query(operation)
 
-        logger.info("execute sql: %s, params: %s", query, parameters)
         if operation.is_ddl:
             chunks = self._execute_ddl(query)
         elif self.use_scan_query:
