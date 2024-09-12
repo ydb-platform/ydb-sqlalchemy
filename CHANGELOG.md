@@ -1,3 +1,5 @@
+* Get rid of logging queries in cursor
+
 ## 0.0.1b21 ##
 * Add support of DROP INDEX statement
 
