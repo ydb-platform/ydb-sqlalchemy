@@ -1,3 +1,4 @@
+## 0.0.1b22 ##
 * Get rid of logging queries in cursor
 
 ## 0.0.1b21 ##

@@ -13,7 +13,7 @@ with open("requirements.txt") as f:
 
 setuptools.setup(
     name="ydb-sqlalchemy",
-    version="0.0.1b21",  # AUTOVERSION
+    version="0.0.1b22",  # AUTOVERSION
     description="YDB Dialect for SQLAlchemy",
     author="Yandex LLC",
     author_email="ydb@yandex-team.ru",
