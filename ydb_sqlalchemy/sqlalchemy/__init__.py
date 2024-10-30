@@ -24,8 +24,11 @@ from sqlalchemy.sql.compiler import (
 from sqlalchemy.sql.elements import ClauseList
 from sqlalchemy.util.compat import inspect_getfullargspec
 
-import ydb_sqlalchemy.dbapi as dbapi
-from ydb_sqlalchemy.dbapi.constants import YDB_KEYWORDS
+import ydb_dbapi as dbapi
+from ydb_dbapi.constants import YDB_KEYWORDS
+# from dbapi import YDB_KEYWORDS
+
+from ydb_sqlalchemy.driver.wrapper import AdaptedAsyncConnection
 from ydb_sqlalchemy.sqlalchemy.dml import Upsert
 
 from . import types
@@ -665,7 +668,7 @@ class YqlDialect(StrCompileDialect):
 
     @classmethod
     def import_dbapi(cls: Any):
-        return dbapi.YdbDBApi()
+        return dbapi
 
     def __init__(
         self,
@@ -777,7 +780,7 @@ class YqlDialect(StrCompileDialect):
         return self.loaded_dbapi.connect(*cargs, **cparams)
 
     def do_begin(self, dbapi_connection: dbapi.Connection) -> None:
-        dbapi_connection.begin()
+        pass
 
     def do_rollback(self, dbapi_connection: dbapi.Connection) -> None:
         dbapi_connection.rollback()
@@ -832,7 +835,7 @@ class YqlDialect(StrCompileDialect):
         context: Optional[DefaultExecutionContext] = None,
         parameters: Optional[Union[Sequence[Mapping[str, Any]], Mapping[str, Any]]] = None,
         execute_many: bool = False,
-    ) -> Tuple[dbapi.YdbQuery, Optional[Union[Sequence[Mapping[str, Any]], Mapping[str, Any]]]]:
+    ) -> Tuple[Optional[Union[Sequence[Mapping[str, Any]], Mapping[str, Any]]]]:
         is_ddl = context.isddl if context is not None else False
 
         if not is_ddl and parameters:
@@ -841,10 +844,10 @@ class YqlDialect(StrCompileDialect):
             statement, parameters = self._format_variables(statement, parameters, execute_many)
             if self._add_declare_for_yql_stmt_vars:
                 statement = self._add_declare_for_yql_stmt_vars_impl(statement, parameters_types)
-            return dbapi.YdbQuery(yql_text=statement, parameters_types=parameters_types, is_ddl=is_ddl), parameters
+            return statement, parameters
 
         statement, parameters = self._format_variables(statement, parameters, execute_many)
-        return dbapi.YdbQuery(yql_text=statement, is_ddl=is_ddl), parameters
+        return statement, parameters
 
     def do_ping(self, dbapi_connection: dbapi.Connection) -> bool:
         cursor = dbapi_connection.cursor()
@@ -882,4 +885,4 @@ class AsyncYqlDialect(YqlDialect):
     supports_statement_cache = True
 
     def connect(self, *cargs, **cparams):
-        return self.loaded_dbapi.async_connect(*cargs, **cparams)
+        return AdaptedAsyncConnection(util.await_only(self.loaded_dbapi.async_connect(*cargs, **cparams)))
