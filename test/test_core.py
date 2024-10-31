@@ -674,7 +674,7 @@ class TestEngine(TestBase):
 
     @pytest.fixture(scope="class")
     def ydb_pool(self, ydb_driver):
-        session_pool = ydb.SessionPool(ydb_driver, size=5, workers_threads_count=1)
+        session_pool = ydb.QuerySessionPool(ydb_driver, size=5, workers_threads_count=1)
 
         try:
             yield session_pool
@@ -728,7 +728,7 @@ class TestAsyncEngine(TestEngine):
 
     @pytest.fixture(scope="class")
     def ydb_pool(self, ydb_driver):
-        session_pool = ydb.aio.SessionPool(ydb_driver, size=5)
+        session_pool = ydb.aio.QuerySessionPool(ydb_driver, size=5)
 
         try:
             yield session_pool
