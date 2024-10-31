@@ -9,6 +9,14 @@ class AdaptedAsyncConnection(AdaptedConnection):
         self._connection: AsyncConnection = connection
 
     @property
+    def _tx_context(self):
+        return self._connection._tx_context
+
+    @property
+    def _tx_mode(self):
+        return self._connection._tx_mode
+
+    @property
     def connection(self):
         return self._connection
 
@@ -25,19 +33,19 @@ class AdaptedAsyncConnection(AdaptedConnection):
         return await_only(self._connection.close())
 
     def set_isolation_level(self, level):
-        return await_only(self._connection.set_isolation_level(level))
+        return self._connection.set_isolation_level(level)
 
     def get_isolation_level(self):
         return self._connection.get_isolation_level()
 
     def describe(self, table_path: str):
-        return self._connection.describe(table_path)
+        return await_only(self._connection.describe(table_path))
 
     def check_exists(self, table_path: str):
-        return self._connection.check_exists(table_path)
+        return await_only(self._connection.check_exists(table_path))
 
     def get_table_names(self):
-        return self._connection.get_table_names()
+        return await_only(self._connection.get_table_names())
 
 
 class AdaptedAsyncCursor:
@@ -60,6 +68,9 @@ class AdaptedAsyncCursor:
 
     def fetchall(self):
         return await_only(self._cursor.fetchall())
+
+    def execute_scheme(self, sql, parameters=None):
+        return await_only(self._cursor.execute_scheme(sql, parameters))
 
     def execute(self, sql, parameters=None):
         return await_only(self._cursor.execute(sql, parameters))

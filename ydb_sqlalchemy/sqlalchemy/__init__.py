@@ -640,7 +640,6 @@ class YqlDialect(StrCompileDialect):
     connection_characteristics = util.immutabledict(
         {
             "isolation_level": characteristics.IsolationLevelCharacteristic(),
-            "ydb_scan_query": YdbScanQueryCharacteristic(),
         }
     )
 
@@ -767,20 +766,8 @@ class YqlDialect(StrCompileDialect):
     def get_isolation_level(self, dbapi_connection: dbapi.Connection) -> str:
         return dbapi_connection.get_isolation_level()
 
-    def set_ydb_scan_query(self, dbapi_connection: dbapi.Connection, value: bool) -> None:
-        dbapi_connection.set_ydb_scan_query(value)
-
-    def reset_ydb_scan_query(self, dbapi_connection: dbapi.Connection):
-        self.set_ydb_scan_query(dbapi_connection, False)
-
-    def get_ydb_scan_query(self, dbapi_connection: dbapi.Connection) -> str:
-        return dbapi_connection.get_ydb_scan_query()
-
     def connect(self, *cargs, **cparams):
         return self.loaded_dbapi.connect(*cargs, **cparams)
-
-    def do_begin(self, dbapi_connection: dbapi.Connection) -> None:
-        pass
 
     def do_rollback(self, dbapi_connection: dbapi.Connection) -> None:
         dbapi_connection.rollback()
@@ -876,7 +863,11 @@ class YqlDialect(StrCompileDialect):
         context: Optional[DefaultExecutionContext] = None,
     ) -> None:
         operation, parameters = self._make_ydb_operation(statement, context, parameters, execute_many=False)
-        cursor.execute(operation, parameters)
+        is_ddl = context.isddl if context is not None else False
+        if is_ddl:
+            cursor.execute_scheme(operation, parameters)
+        else:
+            cursor.execute(operation, parameters)
 
 
 class AsyncYqlDialect(YqlDialect):
