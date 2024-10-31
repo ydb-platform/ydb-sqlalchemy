@@ -64,6 +64,9 @@ class AdaptedAsyncCursor:
     def execute(self, sql, parameters=None):
         return await_only(self._cursor.execute(sql, parameters))
 
+    def executemany(self, sql, parameters=None):
+        return await_only(self._cursor.executemany(sql, parameters))
+
     def close(self):
         return await_only(self._cursor.close())
 
