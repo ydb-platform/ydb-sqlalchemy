@@ -585,8 +585,21 @@ class YdbScanQueryCharacteristic(characteristics.ConnectionCharacteristic):
     def set_characteristic(self, dialect: "YqlDialect", dbapi_connection: dbapi.Connection, value: bool) -> None:
         dialect.set_ydb_scan_query(dbapi_connection, value)
 
-    def get_characteristic(self, dialect: "YqlDialect", dbapi_connection: dbapi.Connection) -> Any:
-        dialect.get_ydb_scan_query(dbapi_connection)
+    def get_characteristic(self, dialect: "YqlDialect", dbapi_connection: dbapi.Connection) -> bool:
+        return dialect.get_ydb_scan_query(dbapi_connection)
+
+
+class YdbRequestSettingsCharacteristic(characteristics.ConnectionCharacteristic):
+    def reset_characteristic(self, dialect: "YqlDialect", dbapi_connection: dbapi.Connection) -> None:
+        dialect.reset_ydb_request_settings(dbapi_connection)
+
+    def set_characteristic(
+        self, dialect: "YqlDialect", dbapi_connection: dbapi.Connection, value: ydb.BaseRequestSettings
+    ) -> None:
+        dialect.set_ydb_request_settings(dbapi_connection, value)
+
+    def get_characteristic(self, dialect: "YqlDialect", dbapi_connection: dbapi.Connection) -> ydb.BaseRequestSettings:
+        return dialect.get_ydb_request_settings(dbapi_connection)
 
 
 class YqlDialect(StrCompileDialect):
@@ -638,6 +651,7 @@ class YqlDialect(StrCompileDialect):
         {
             "isolation_level": characteristics.IsolationLevelCharacteristic(),
             "ydb_scan_query": YdbScanQueryCharacteristic(),
+            "ydb_request_settings": YdbRequestSettingsCharacteristic(),
         }
     )
 
@@ -770,8 +784,21 @@ class YqlDialect(StrCompileDialect):
     def reset_ydb_scan_query(self, dbapi_connection: dbapi.Connection):
         self.set_ydb_scan_query(dbapi_connection, False)
 
-    def get_ydb_scan_query(self, dbapi_connection: dbapi.Connection) -> str:
+    def get_ydb_scan_query(self, dbapi_connection: dbapi.Connection) -> bool:
         return dbapi_connection.get_ydb_scan_query()
+
+    def set_ydb_request_settings(
+        self,
+        dbapi_connection: dbapi.Connection,
+        value: ydb.BaseRequestSettings,
+    ) -> None:
+        dbapi_connection.set_ydb_request_settings(value)
+
+    def reset_ydb_request_settings(self, dbapi_connection: dbapi.Connection):
+        self.set_ydb_request_settings(dbapi_connection, ydb.BaseRequestSettings())
+
+    def get_ydb_request_settings(self, dbapi_connection: dbapi.Connection) -> ydb.BaseRequestSettings:
+        return dbapi_connection.get_ydb_request_settings()
 
     def connect(self, *cargs, **cparams):
         return self.loaded_dbapi.connect(*cargs, **cparams)

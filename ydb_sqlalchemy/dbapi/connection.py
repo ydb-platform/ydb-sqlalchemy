@@ -58,10 +58,17 @@ class Connection:
         self.tx_mode: ydb.AbstractTransactionModeBuilder = ydb.SerializableReadWrite()
         self.tx_context: Optional[ydb.TxContext] = None
         self.use_scan_query: bool = False
+        self.request_settings: ydb.BaseRequestSettings = ydb.BaseRequestSettings()
 
     def cursor(self):
         return self._cursor_class(
-            self.driver, self.session_pool, self.tx_mode, self.tx_context, self.use_scan_query, self.table_path_prefix
+            driver=self.driver,
+            session_pool=self.session_pool,
+            tx_mode=self.tx_mode,
+            tx_context=self.tx_context,
+            request_settings=self.request_settings,
+            use_scan_query=self.use_scan_query,
+            table_path_prefix=self.table_path_prefix,
         )
 
     def describe(self, table_path: str) -> ydb.TableDescription:
@@ -69,7 +76,7 @@ class Connection:
         cursor = self.cursor()
         return cursor.describe_table(abs_table_path)
 
-    def check_exists(self, table_path: str) -> ydb.SchemeEntry:
+    def check_exists(self, table_path: str) -> bool:
         abs_table_path = posixpath.join(self.database, self.table_path_prefix, table_path)
         cursor = self.cursor()
         return cursor.check_exists(abs_table_path)
@@ -123,6 +130,12 @@ class Connection:
 
     def get_ydb_scan_query(self) -> bool:
         return self.use_scan_query
+
+    def set_ydb_request_settings(self, value: ydb.BaseRequestSettings) -> None:
+        self.request_settings = value
+
+    def get_ydb_request_settings(self) -> ydb.BaseRequestSettings:
+        return self.request_settings
 
     def begin(self):
         self.tx_context = None

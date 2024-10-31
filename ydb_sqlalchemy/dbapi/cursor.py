@@ -5,16 +5,7 @@ import hashlib
 import itertools
 import posixpath
 from collections.abc import AsyncIterator
-from typing import (
-    Any,
-    Dict,
-    Generator,
-    List,
-    Mapping,
-    Optional,
-    Sequence,
-    Union,
-)
+from typing import Any, Dict, Generator, List, Mapping, Optional, Sequence, Union
 
 import ydb
 import ydb.aio
@@ -29,6 +20,7 @@ from .errors import (
     OperationalError,
     ProgrammingError,
 )
+from .tracing import maybe_get_current_trace_id
 
 
 def get_column_type(type_obj: Any) -> str:
@@ -87,6 +79,7 @@ class Cursor:
         driver: Union[ydb.Driver, ydb.aio.Driver],
         session_pool: Union[ydb.SessionPool, ydb.aio.SessionPool],
         tx_mode: ydb.AbstractTransactionModeBuilder,
+        request_settings: ydb.BaseRequestSettings,
         tx_context: Optional[ydb.BaseTxContext] = None,
         use_scan_query: bool = False,
         table_path_prefix: str = "",
@@ -94,28 +87,32 @@ class Cursor:
         self.driver = driver
         self.session_pool = session_pool
         self.tx_mode = tx_mode
+        self.request_settings = request_settings
         self.tx_context = tx_context
         self.use_scan_query = use_scan_query
+        self.root_directory = table_path_prefix
         self.description = None
         self.arraysize = 1
         self.rows = None
         self._rows_prefetched = None
-        self.root_directory = table_path_prefix
 
     @_handle_ydb_errors
     def describe_table(self, abs_table_path: str) -> ydb.TableDescription:
-        return self._retry_operation_in_pool(self._describe_table, abs_table_path)
+        settings = self._get_request_settings()
+        return self._retry_operation_in_pool(self._describe_table, abs_table_path, settings)
 
     def check_exists(self, abs_table_path: str) -> bool:
+        settings = self._get_request_settings()
         try:
-            self._retry_operation_in_pool(self._describe_path, abs_table_path)
+            self._retry_operation_in_pool(self._describe_path, abs_table_path, settings)
             return True
         except ydb.SchemeError:
             return False
 
     @_handle_ydb_errors
     def get_table_names(self, abs_dir_path: str) -> List[str]:
-        directory: ydb.Directory = self._retry_operation_in_pool(self._list_directory, abs_dir_path)
+        settings = self._get_request_settings()
+        directory: ydb.Directory = self._retry_operation_in_pool(self._list_directory, abs_dir_path, settings)
         result = []
         for child in directory.children:
             child_abs_path = posixpath.join(abs_dir_path, child.name)
@@ -180,62 +177,76 @@ class Cursor:
     def _execute_scan_query(
         self, query: Union[ydb.DataQuery, str], parameters: Optional[Mapping[str, Any]] = None
     ) -> Generator[ydb.convert.ResultSet, None, None]:
+        settings = self._get_request_settings()
         prepared_query = query
         if isinstance(query, str) and parameters:
-            prepared_query: ydb.DataQuery = self._retry_operation_in_pool(self._prepare, query)
+            prepared_query: ydb.DataQuery = self._retry_operation_in_pool(self._prepare, query, settings)
 
         if isinstance(query, str):
             scan_query = ydb.ScanQuery(query, None)
         else:
             scan_query = ydb.ScanQuery(prepared_query.yql_text, prepared_query.parameters_types)
 
-        return self._execute_scan_query_in_driver(scan_query, parameters)
+        return self._execute_scan_query_in_driver(scan_query, parameters, settings)
 
     @_handle_ydb_errors
     def _execute_dml(
         self, query: Union[ydb.DataQuery, str], parameters: Optional[Mapping[str, Any]] = None
     ) -> ydb.convert.ResultSets:
+        settings = self._get_request_settings()
         prepared_query = query
         if isinstance(query, str) and parameters:
             if self.tx_context:
-                prepared_query = self._run_operation_in_session(self._prepare, query)
+                prepared_query = self._run_operation_in_session(self._prepare, query, settings)
             else:
-                prepared_query = self._retry_operation_in_pool(self._prepare, query)
+                prepared_query = self._retry_operation_in_pool(self._prepare, query, settings)
 
         if self.tx_context:
-            return self._run_operation_in_tx(self._execute_in_tx, prepared_query, parameters)
+            return self._run_operation_in_tx(self._execute_in_tx, prepared_query, parameters, settings)
 
-        return self._retry_operation_in_pool(self._execute_in_session, self.tx_mode, prepared_query, parameters)
+        return self._retry_operation_in_pool(
+            self._execute_in_session, self.tx_mode, prepared_query, parameters, settings
+        )
 
     @_handle_ydb_errors
     def _execute_ddl(self, query: str) -> ydb.convert.ResultSets:
-        return self._retry_operation_in_pool(self._execute_scheme, query)
+        settings = self._get_request_settings()
+        return self._retry_operation_in_pool(self._execute_scheme, query, settings)
 
     @staticmethod
-    def _execute_scheme(session: ydb.Session, query: str) -> ydb.convert.ResultSets:
-        return session.execute_scheme(query)
+    def _execute_scheme(
+        session: ydb.Session,
+        query: str,
+        settings: ydb.BaseRequestSettings,
+    ) -> ydb.convert.ResultSets:
+        return session.execute_scheme(query, settings)
 
     @staticmethod
-    def _describe_table(session: ydb.Session, abs_table_path: str) -> ydb.TableDescription:
-        return session.describe_table(abs_table_path)
+    def _describe_table(
+        session: ydb.Session, abs_table_path: str, settings: ydb.BaseRequestSettings
+    ) -> ydb.TableDescription:
+        return session.describe_table(abs_table_path, settings)
 
     @staticmethod
-    def _describe_path(session: ydb.Session, table_path: str) -> ydb.SchemeEntry:
-        return session._driver.scheme_client.describe_path(table_path)
+    def _describe_path(session: ydb.Session, table_path: str, settings: ydb.BaseRequestSettings) -> ydb.SchemeEntry:
+        return session._driver.scheme_client.describe_path(table_path, settings)
 
     @staticmethod
-    def _list_directory(session: ydb.Session, abs_dir_path: str) -> ydb.Directory:
-        return session._driver.scheme_client.list_directory(abs_dir_path)
+    def _list_directory(session: ydb.Session, abs_dir_path: str, settings: ydb.BaseRequestSettings) -> ydb.Directory:
+        return session._driver.scheme_client.list_directory(abs_dir_path, settings)
 
     @staticmethod
-    def _prepare(session: ydb.Session, query: str) -> ydb.DataQuery:
-        return session.prepare(query)
+    def _prepare(session: ydb.Session, query: str, settings: ydb.BaseRequestSettings) -> ydb.DataQuery:
+        return session.prepare(query, settings)
 
     @staticmethod
     def _execute_in_tx(
-        tx_context: ydb.TxContext, prepared_query: ydb.DataQuery, parameters: Optional[Mapping[str, Any]]
+        tx_context: ydb.TxContext,
+        prepared_query: ydb.DataQuery,
+        parameters: Optional[Mapping[str, Any]],
+        settings: ydb.BaseRequestSettings,
     ) -> ydb.convert.ResultSets:
-        return tx_context.execute(prepared_query, parameters, commit_tx=False)
+        return tx_context.execute(prepared_query, parameters, commit_tx=False, settings=settings)
 
     @staticmethod
     def _execute_in_session(
@@ -243,16 +254,18 @@ class Cursor:
         tx_mode: ydb.AbstractTransactionModeBuilder,
         prepared_query: ydb.DataQuery,
         parameters: Optional[Mapping[str, Any]],
+        settings: ydb.BaseRequestSettings,
     ) -> ydb.convert.ResultSets:
-        return session.transaction(tx_mode).execute(prepared_query, parameters, commit_tx=True)
+        return session.transaction(tx_mode).execute(prepared_query, parameters, commit_tx=True, settings=settings)
 
     def _execute_scan_query_in_driver(
         self,
         scan_query: ydb.ScanQuery,
         parameters: Optional[Mapping[str, Any]],
+        settings: ydb.BaseRequestSettings,
     ) -> Generator[ydb.convert.ResultSet, None, None]:
         chunk: ydb.ScanQueryResult
-        for chunk in self.driver.table_client.scan_query(scan_query, parameters):
+        for chunk in self.driver.table_client.scan_query(scan_query, parameters, settings):
             yield chunk.result_set
 
     def _run_operation_in_tx(self, callee: collections.abc.Callable, *args, **kwargs):
@@ -325,35 +338,66 @@ class Cursor:
     def rowcount(self):
         return len(self._ensure_prefetched())
 
+    def _get_request_settings(self) -> ydb.BaseRequestSettings:
+        settings = self.request_settings.make_copy()
+
+        if self.request_settings.trace_id is None:
+            settings = settings.with_trace_id(maybe_get_current_trace_id())
+
+        return settings
+
 
 class AsyncCursor(Cursor):
     _await = staticmethod(util.await_only)
 
     @staticmethod
-    async def _describe_table(session: ydb.aio.table.Session, abs_table_path: str) -> ydb.TableDescription:
-        return await session.describe_table(abs_table_path)
+    async def _describe_table(
+        session: ydb.aio.table.Session,
+        abs_table_path: str,
+        settings: ydb.BaseRequestSettings,
+    ) -> ydb.TableDescription:
+        return await session.describe_table(abs_table_path, settings)
 
     @staticmethod
-    async def _describe_path(session: ydb.aio.table.Session, abs_table_path: str) -> ydb.SchemeEntry:
-        return await session._driver.scheme_client.describe_path(abs_table_path)
+    async def _describe_path(
+        session: ydb.aio.table.Session,
+        abs_table_path: str,
+        settings: ydb.BaseRequestSettings,
+    ) -> ydb.SchemeEntry:
+        return await session._driver.scheme_client.describe_path(abs_table_path, settings)
 
     @staticmethod
-    async def _list_directory(session: ydb.aio.table.Session, abs_dir_path: str) -> ydb.Directory:
-        return await session._driver.scheme_client.list_directory(abs_dir_path)
+    async def _list_directory(
+        session: ydb.aio.table.Session,
+        abs_dir_path: str,
+        settings: ydb.BaseRequestSettings,
+    ) -> ydb.Directory:
+        return await session._driver.scheme_client.list_directory(abs_dir_path, settings)
 
     @staticmethod
-    async def _execute_scheme(session: ydb.aio.table.Session, query: str) -> ydb.convert.ResultSets:
-        return await session.execute_scheme(query)
+    async def _execute_scheme(
+        session: ydb.aio.table.Session,
+        query: str,
+        settings: ydb.BaseRequestSettings,
+    ) -> ydb.convert.ResultSets:
+        return await session.execute_scheme(query, settings)
 
     @staticmethod
-    async def _prepare(session: ydb.aio.table.Session, query: str) -> ydb.DataQuery:
-        return await session.prepare(query)
+    async def _prepare(
+        session: ydb.aio.table.Session,
+        query: str,
+        settings: ydb.BaseRequestSettings,
+    ) -> ydb.DataQuery:
+        return await session.prepare(query, settings)
 
     @staticmethod
     async def _execute_in_tx(
-        tx_context: ydb.aio.table.TxContext, prepared_query: ydb.DataQuery, parameters: Optional[Mapping[str, Any]]
+        tx_context: ydb.aio.table.TxContext,
+        prepared_query: ydb.DataQuery,
+        parameters: Optional[Mapping[str, Any]],
+        settings: ydb.BaseRequestSettings,
     ) -> ydb.convert.ResultSets:
-        return await tx_context.execute(prepared_query, parameters, commit_tx=False)
+        return await tx_context.execute(prepared_query, parameters, commit_tx=False, settings=settings)
 
     @staticmethod
     async def _execute_in_session(
@@ -361,16 +405,18 @@ class AsyncCursor(Cursor):
         tx_mode: ydb.AbstractTransactionModeBuilder,
         prepared_query: ydb.DataQuery,
         parameters: Optional[Mapping[str, Any]],
+        settings: ydb.BaseRequestSettings,
     ) -> ydb.convert.ResultSets:
-        return await session.transaction(tx_mode).execute(prepared_query, parameters, commit_tx=True)
+        return await session.transaction(tx_mode).execute(prepared_query, parameters, commit_tx=True, settings=settings)
 
     def _execute_scan_query_in_driver(
         self,
         scan_query: ydb.ScanQuery,
         parameters: Optional[Mapping[str, Any]],
+        settings: ydb.BaseRequestSettings,
     ) -> Generator[ydb.convert.ResultSet, None, None]:
         iterator: AsyncIterator[ydb.ScanQueryResult] = self._await(
-            self.driver.table_client.scan_query(scan_query, parameters)
+            self.driver.table_client.scan_query(scan_query, parameters, settings)
         )
         while True:
             try:
