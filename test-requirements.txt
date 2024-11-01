@@ -1,8 +1,8 @@
 pyyaml==5.3.1
 greenlet
 sqlalchemy==2.0.7
-ydb >= 3.18.6
-/Users/ovcharuk/work/ydb-sqlalchemy/ydb_dbapi-0.0.1b1-py3-none-any.whl
+ydb >= 3.18.7
+ydb-dbapi==0.0.1b2
 requests<2.29
 pytest==7.2.2
 docker==6.0.1

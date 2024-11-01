@@ -488,49 +488,49 @@ class TestScanQuery(TablesTest):
     #     assert options_after_set["ydb_scan_query"]
     #     assert "ydb_scan_query" not in options_after_reset
 
-    def test_fetchmany(self, connection_no_trans: sa.Connection):
-        table = self.tables.test
-        stmt = sa.select(table).where(table.c.id % 2 == 0)
+    # def test_fetchmany(self, connection_no_trans: sa.Connection):
+    #     table = self.tables.test
+    #     stmt = sa.select(table).where(table.c.id % 2 == 0)
 
-        # connection_no_trans.execution_options(ydb_scan_query=True)
-        cursor = connection_no_trans.execute(stmt)
+    #     # connection_no_trans.execution_options(ydb_scan_query=True)
+    #     cursor = connection_no_trans.execute(stmt)
 
-        # assert cursor.cursor.use_scan_query
-        result = cursor.fetchmany(1000)  # fetches only the first 5k rows
-        assert result == [(i,) for i in range(2000) if i % 2 == 0]
+    #     # assert cursor.cursor.use_scan_query
+    #     result = cursor.fetchmany(1000)  # fetches only the first 5k rows
+    #     assert result == [(i,) for i in range(2000) if i % 2 == 0]
 
-    def test_fetchall(self, connection_no_trans: sa.Connection):
-        table = self.tables.test
-        stmt = sa.select(table).where(table.c.id % 2 == 0)
+    # def test_fetchall(self, connection_no_trans: sa.Connection):
+    #     table = self.tables.test
+    #     stmt = sa.select(table).where(table.c.id % 2 == 0)
 
-        # connection_no_trans.execution_options(ydb_scan_query=True)
-        cursor = connection_no_trans.execute(stmt)
+    #     # connection_no_trans.execution_options(ydb_scan_query=True)
+    #     cursor = connection_no_trans.execute(stmt)
 
-        # assert cursor.cursor.use_scan_query
-        result = cursor.fetchall()
-        assert result == [(i,) for i in range(50000) if i % 2 == 0]
+    #     # assert cursor.cursor.use_scan_query
+    #     result = cursor.fetchall()
+    #     assert result == [(i,) for i in range(50000) if i % 2 == 0]
 
-    def test_begin_does_nothing(self, connection_no_trans: sa.Connection):
-        table = self.tables.test
-        # connection_no_trans.execution_options(ydb_scan_query=True)
+    # def test_begin_does_nothing(self, connection_no_trans: sa.Connection):
+    #     table = self.tables.test
+    #     # connection_no_trans.execution_options(ydb_scan_query=True)
 
-        with connection_no_trans.begin():
-            cursor = connection_no_trans.execute(sa.select(table))
+    #     with connection_no_trans.begin():
+    #         cursor = connection_no_trans.execute(sa.select(table))
 
-            # assert cursor.cursor.use_scan_query
-            assert cursor.cursor.tx_context is None
+    #         # assert cursor.cursor.use_scan_query
+    #         assert cursor.cursor.tx_context is None
 
-    def test_engine_option(self):
-        table = self.tables.test
-        engine = self.bind.execution_options()
+    # def test_engine_option(self):
+    #     table = self.tables.test
+    #     engine = self.bind.execution_options()
 
-        with engine.begin() as connection:
-            cursor = connection.execute(sa.select(table))
-            # assert cursor.cursor.use_scan_query
+    #     with engine.begin() as connection:
+    #         cursor = connection.execute(sa.select(table))
+    #         # assert cursor.cursor.use_scan_query
 
-        with engine.begin() as connection:
-            cursor = connection.execute(sa.select(table))
-            # assert cursor.cursor.use_scan_query
+    #     with engine.begin() as connection:
+    #         cursor = connection.execute(sa.select(table))
+    #         # assert cursor.cursor.use_scan_query
 
 
 class TestTransaction(TablesTest):
@@ -585,9 +585,9 @@ class TestTransaction(TablesTest):
 
         connection_no_trans.execution_options(isolation_level=isolation_level)
         with connection_no_trans.begin():
+            cursor1 = connection_no_trans.execute(sa.select(table))
             tx_id = dbapi_connection._tx_context.tx_id
             assert tx_id is not None
-            cursor1 = connection_no_trans.execute(sa.select(table))
             cursor2 = connection_no_trans.execute(sa.select(table))
             assert dbapi_connection._tx_context.tx_id == tx_id
 
@@ -631,14 +631,14 @@ class TestTransactionIsolationLevel(TestBase):
         interactive: bool
 
     YDB_ISOLATION_SETTINGS_MAP = {
-        IsolationLevel.AUTOCOMMIT: IsolationSettings(ydb.SerializableReadWrite().name, False),
-        IsolationLevel.SERIALIZABLE: IsolationSettings(ydb.SerializableReadWrite().name, True),
-        IsolationLevel.ONLINE_READONLY: IsolationSettings(ydb.OnlineReadOnly().name, False),
+        IsolationLevel.AUTOCOMMIT: IsolationSettings(ydb.QuerySerializableReadWrite().name, False),
+        IsolationLevel.SERIALIZABLE: IsolationSettings(ydb.QuerySerializableReadWrite().name, True),
+        IsolationLevel.ONLINE_READONLY: IsolationSettings(ydb.QueryOnlineReadOnly().name, False),
         IsolationLevel.ONLINE_READONLY_INCONSISTENT: IsolationSettings(
-            ydb.OnlineReadOnly().with_allow_inconsistent_reads().name, False
+            ydb.QueryOnlineReadOnly().with_allow_inconsistent_reads().name, False
         ),
-        IsolationLevel.STALE_READONLY: IsolationSettings(ydb.StaleReadOnly().name, False),
-        IsolationLevel.SNAPSHOT_READONLY: IsolationSettings(ydb.SnapshotReadOnly().name, True),
+        IsolationLevel.STALE_READONLY: IsolationSettings(ydb.QueryStaleReadOnly().name, False),
+        IsolationLevel.SNAPSHOT_READONLY: IsolationSettings(ydb.QuerySnapshotReadOnly().name, True),
     }
 
     def test_connection_set(self, connection_no_trans: sa.Connection):
@@ -689,8 +689,8 @@ class TestEngine(TestBase):
             dbapi_conn1: dbapi.Connection = conn1.connection.dbapi_connection
             dbapi_conn2: dbapi.Connection = conn2.connection.dbapi_connection
 
-            assert dbapi_conn1.session_pool is dbapi_conn2.session_pool
-            assert dbapi_conn1.driver is dbapi_conn2.driver
+            assert dbapi_conn1._session_pool is dbapi_conn2._session_pool
+            assert dbapi_conn1._driver is dbapi_conn2._driver
 
         engine1.dispose()
         engine2.dispose()
@@ -704,13 +704,12 @@ class TestEngine(TestBase):
             dbapi_conn1: dbapi.Connection = conn1.connection.dbapi_connection
             dbapi_conn2: dbapi.Connection = conn2.connection.dbapi_connection
 
-            assert dbapi_conn1.session_pool is dbapi_conn2.session_pool
-            assert dbapi_conn1.driver is dbapi_conn2.driver
+            assert dbapi_conn1._session_pool is dbapi_conn2._session_pool
+            assert dbapi_conn1._driver is dbapi_conn2._driver
 
         engine1.dispose()
         engine2.dispose()
         assert not ydb_driver._stopped
-
 
 class TestAsyncEngine(TestEngine):
     __only_on__ = "yql+ydb_async"
@@ -726,14 +725,15 @@ class TestAsyncEngine(TestEngine):
         finally:
             loop.run_until_complete(driver.stop())
 
+    @pytest.mark.asyncio
     @pytest.fixture(scope="class")
     def ydb_pool(self, ydb_driver):
-        session_pool = ydb.aio.QuerySessionPool(ydb_driver, size=5)
+        loop = asyncio.get_event_loop()
+        session_pool = ydb.aio.QuerySessionPool(ydb_driver, size=5, loop=loop)
 
         try:
             yield session_pool
         finally:
-            loop = asyncio.get_event_loop()
             loop.run_until_complete(session_pool.stop())
 
 

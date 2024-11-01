@@ -9,6 +9,14 @@ class AdaptedAsyncConnection(AdaptedConnection):
         self._connection: AsyncConnection = connection
 
     @property
+    def _driver(self):
+        return self._connection._driver
+
+    @property
+    def _session_pool(self):
+        return self._connection._session_pool
+
+    @property
     def _tx_context(self):
         return self._connection._tx_context
 
@@ -19,6 +27,11 @@ class AdaptedAsyncConnection(AdaptedConnection):
     @property
     def connection(self):
         return self._connection
+
+    @property
+    def interactive_transaction(self):
+        return self._connection.interactive_transaction
+
 
     def cursor(self):
         return AdaptedAsyncCursor(self._connection.cursor())

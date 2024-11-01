@@ -429,8 +429,10 @@ class YqlCompiler(StrSQLCompiler):
             for parameter_name, parameter_value in parameters_entry.items():
                 parameters_values[parameter_name].append(parameter_value)
 
+        print(f"Parameters_values: {parameters_values}")
         parameter_types = {}
         for bind_name in self.bind_names.values():
+            print(f"bind name {bind_name}")
             bind = self.binds[bind_name]
 
             if bind.literal_execute:
@@ -450,7 +452,11 @@ class YqlCompiler(StrSQLCompiler):
             if not post_compile_bind_values or None in post_compile_bind_values:
                 is_optional = True
 
+            print(f"post compile bind values {post_compile_bind_values}")
+
             bind_type = self._guess_bound_variable_type_by_parameters(bind, post_compile_bind_values)
+
+            print(f"bind type {bind_type}")
 
             if bind_type:
                 for post_compile_bind_name in post_compile_bind_names:
@@ -816,6 +822,15 @@ class YqlDialect(StrCompileDialect):
         )
         return f"{declarations}\n{statement}"
 
+    def __merge_parameters_values_and_types(
+        self, values: Mapping[str, Any], types: Mapping[str, Any]
+    ) -> Sequence[Mapping[str, ydb.TypedValue]]:
+        print(values)
+        print(types)
+        return {
+            key: ydb.TypedValue(values[key], types[key]) for key in values.keys()
+        }
+
     def _make_ydb_operation(
         self,
         statement: str,
@@ -827,7 +842,8 @@ class YqlDialect(StrCompileDialect):
 
         if not is_ddl and parameters:
             parameters_types = context.compiled.get_bind_types(parameters)
-            parameters_types = {f"${k}": v for k, v in parameters_types.items()}
+            parameters = self.__merge_parameters_values_and_types(parameters, parameters_types)
+            # parameters_types = {f"${k}": v for k, v in parameters_types.items()}
             statement, parameters = self._format_variables(statement, parameters, execute_many)
             if self._add_declare_for_yql_stmt_vars:
                 statement = self._add_declare_for_yql_stmt_vars_impl(statement, parameters_types)
