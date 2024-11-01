@@ -32,9 +32,11 @@ class AdaptedAsyncConnection(AdaptedConnection):
     def interactive_transaction(self):
         return self._connection.interactive_transaction
 
-
     def cursor(self):
         return AdaptedAsyncCursor(self._connection.cursor())
+
+    def begin(self):
+        return await_only(self._connection.begin())
 
     def commit(self):
         return await_only(self._connection.commit())

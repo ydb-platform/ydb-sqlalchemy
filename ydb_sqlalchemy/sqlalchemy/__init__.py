@@ -769,6 +769,9 @@ class YqlDialect(StrCompileDialect):
     def connect(self, *cargs, **cparams):
         return self.loaded_dbapi.connect(*cargs, **cparams)
 
+    def do_begin(self, dbapi_connection: dbapi.Connection) -> None:
+        dbapi_connection.begin()
+
     def do_rollback(self, dbapi_connection: dbapi.Connection) -> None:
         dbapi_connection.rollback()
 
