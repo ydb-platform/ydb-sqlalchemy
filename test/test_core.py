@@ -33,7 +33,16 @@ class TestText(TestBase):
                 SELECT x, y FROM AS_TABLE(:data)
                 """
             ),
-            [{"data": [{"x": 2, "y": 1}, {"x": 3, "y": 2}]}],
+            [{
+                "data": ydb.TypedValue(
+                    [{"x": 2, "y": 1}, {"x": 3, "y": 2}],
+                    ydb.ListType(
+                        ydb.StructType(
+                        ).add_member('x', ydb.PrimitiveType.Int64
+                        ).add_member('y', ydb.PrimitiveType.Int64)
+                    )
+                )
+            }],
         )
         assert set(rs.fetchall()) == {(2, 1), (3, 2)}
 
