@@ -751,9 +751,9 @@ class TestCredentials(TestBase):
     __only_on__ = "yql+ydb"
 
     @pytest.fixture(scope="class")
-    def table_client_settings(self):
+    def query_client_settings(self):
         yield (
-            ydb.TableClientSettings()
+            ydb.QueryClientSettings()
             .with_native_date_in_result_sets(True)
             .with_native_datetime_in_result_sets(True)
             .with_native_timestamp_in_result_sets(True)
@@ -762,7 +762,7 @@ class TestCredentials(TestBase):
         )
 
     @pytest.fixture(scope="class")
-    def driver_config_for_credentials(self, table_client_settings):
+    def driver_config_for_credentials(self, query_client_settings):
         url = config.db_url
         endpoint = f"grpc://{url.host}:{url.port}"
         database = url.database
@@ -770,10 +770,10 @@ class TestCredentials(TestBase):
         yield ydb.DriverConfig(
             endpoint=endpoint,
             database=database,
-            table_client_settings=table_client_settings,
+            query_client_settings=query_client_settings,
         )
 
-    def test_ydb_credentials_good(self, table_client_settings, driver_config_for_credentials):
+    def test_ydb_credentials_good(self, query_client_settings, driver_config_for_credentials):
         credentials_good = ydb.StaticCredentials(
             driver_config=driver_config_for_credentials,
             user="root",
@@ -784,7 +784,7 @@ class TestCredentials(TestBase):
             result = conn.execute(sa.text("SELECT 1 as value"))
             assert result.fetchone()
 
-    def test_ydb_credentials_bad(self, table_client_settings, driver_config_for_credentials):
+    def test_ydb_credentials_bad(self, query_client_settings, driver_config_for_credentials):
         credentials_bad = ydb.StaticCredentials(
             driver_config=driver_config_for_credentials,
             user="root",
