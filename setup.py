@@ -26,7 +26,7 @@ setuptools.setup(
     classifiers=[
         "Programming Language :: Python",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
     ],
     keywords="SQLAlchemy YDB YQL",
     install_requires=requirements,  # requirements.txt

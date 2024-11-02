@@ -24,8 +24,8 @@ from sqlalchemy.sql.compiler import (
 from sqlalchemy.sql.elements import ClauseList
 from sqlalchemy.util.compat import inspect_getfullargspec
 
-import ydb_sqlalchemy.dbapi as dbapi
-from ydb_sqlalchemy.dbapi.constants import YDB_KEYWORDS
+import ydb_dbapi as dbapi
+from ydb_sqlalchemy.driver.wrapper import AdaptedAsyncConnection
 from ydb_sqlalchemy.sqlalchemy.dml import Upsert
 
 from . import types
@@ -54,7 +54,7 @@ COMPOUND_KEYWORDS = {
 
 class YqlIdentifierPreparer(IdentifierPreparer):
     reserved_words = IdentifierPreparer.reserved_words
-    reserved_words.update(YDB_KEYWORDS)
+    reserved_words.update(dbapi.YDB_KEYWORDS)
 
     def __init__(self, dialect):
         super(YqlIdentifierPreparer, self).__init__(
@@ -268,7 +268,7 @@ class YqlCompiler(StrSQLCompiler):
                 select._offset_clause, types.UInt64, skip_types=(types.UInt64, types.UInt32, types.UInt16, types.UInt8)
             )
             if select._limit_clause is None:
-                text += "\n LIMIT NULL"
+                text += "\n LIMIT 1000"  # For some reason, YDB do not support LIMIT NULL OFFSET <num>
             text += " OFFSET " + self.process(offset_clause, **kw)
         return text
 
@@ -578,17 +578,6 @@ def _get_column_info(t):
     return COLUMN_TYPES[t], nullable
 
 
-class YdbScanQueryCharacteristic(characteristics.ConnectionCharacteristic):
-    def reset_characteristic(self, dialect: "YqlDialect", dbapi_connection: dbapi.Connection) -> None:
-        dialect.reset_ydb_scan_query(dbapi_connection)
-
-    def set_characteristic(self, dialect: "YqlDialect", dbapi_connection: dbapi.Connection, value: bool) -> None:
-        dialect.set_ydb_scan_query(dbapi_connection, value)
-
-    def get_characteristic(self, dialect: "YqlDialect", dbapi_connection: dbapi.Connection) -> bool:
-        return dialect.get_ydb_scan_query(dbapi_connection)
-
-
 class YdbRequestSettingsCharacteristic(characteristics.ConnectionCharacteristic):
     def reset_characteristic(self, dialect: "YqlDialect", dbapi_connection: dbapi.Connection) -> None:
         dialect.reset_ydb_request_settings(dbapi_connection)
@@ -650,7 +639,6 @@ class YqlDialect(StrCompileDialect):
     connection_characteristics = util.immutabledict(
         {
             "isolation_level": characteristics.IsolationLevelCharacteristic(),
-            "ydb_scan_query": YdbScanQueryCharacteristic(),
             "ydb_request_settings": YdbRequestSettingsCharacteristic(),
         }
     )
@@ -679,7 +667,7 @@ class YqlDialect(StrCompileDialect):
 
     @classmethod
     def import_dbapi(cls: Any):
-        return dbapi.YdbDBApi()
+        return dbapi
 
     def __init__(
         self,
@@ -778,15 +766,6 @@ class YqlDialect(StrCompileDialect):
     def get_isolation_level(self, dbapi_connection: dbapi.Connection) -> str:
         return dbapi_connection.get_isolation_level()
 
-    def set_ydb_scan_query(self, dbapi_connection: dbapi.Connection, value: bool) -> None:
-        dbapi_connection.set_ydb_scan_query(value)
-
-    def reset_ydb_scan_query(self, dbapi_connection: dbapi.Connection):
-        self.set_ydb_scan_query(dbapi_connection, False)
-
-    def get_ydb_scan_query(self, dbapi_connection: dbapi.Connection) -> bool:
-        return dbapi_connection.get_ydb_scan_query()
-
     def set_ydb_request_settings(
         self,
         dbapi_connection: dbapi.Connection,
@@ -853,25 +832,43 @@ class YqlDialect(StrCompileDialect):
         )
         return f"{declarations}\n{statement}"
 
+    def __merge_parameters_values_and_types(
+        self, values: Mapping[str, Any], types: Mapping[str, Any], execute_many: bool
+    ) -> Sequence[Mapping[str, ydb.TypedValue]]:
+        if isinstance(values, collections.abc.Mapping):
+            values = [values]
+
+        result_list = []
+        for value_map in values:
+            result = {}
+            for key in value_map.keys():
+                if key in types:
+                    result[key] = ydb.TypedValue(value_map[key], types[key])
+                else:
+                    result[key] = values[key]
+            result_list.append(result)
+        return result_list if execute_many else result_list[0]
+
     def _make_ydb_operation(
         self,
         statement: str,
         context: Optional[DefaultExecutionContext] = None,
         parameters: Optional[Union[Sequence[Mapping[str, Any]], Mapping[str, Any]]] = None,
         execute_many: bool = False,
-    ) -> Tuple[dbapi.YdbQuery, Optional[Union[Sequence[Mapping[str, Any]], Mapping[str, Any]]]]:
+    ) -> Tuple[Optional[Union[Sequence[Mapping[str, Any]], Mapping[str, Any]]]]:
         is_ddl = context.isddl if context is not None else False
 
         if not is_ddl and parameters:
             parameters_types = context.compiled.get_bind_types(parameters)
-            parameters_types = {f"${k}": v for k, v in parameters_types.items()}
+            if parameters_types != {}:
+                parameters = self.__merge_parameters_values_and_types(parameters, parameters_types, execute_many)
             statement, parameters = self._format_variables(statement, parameters, execute_many)
             if self._add_declare_for_yql_stmt_vars:
                 statement = self._add_declare_for_yql_stmt_vars_impl(statement, parameters_types)
-            return dbapi.YdbQuery(yql_text=statement, parameters_types=parameters_types, is_ddl=is_ddl), parameters
+            return statement, parameters
 
         statement, parameters = self._format_variables(statement, parameters, execute_many)
-        return dbapi.YdbQuery(yql_text=statement, is_ddl=is_ddl), parameters
+        return statement, parameters
 
     def do_ping(self, dbapi_connection: dbapi.Connection) -> bool:
         cursor = dbapi_connection.cursor()
@@ -900,7 +897,11 @@ class YqlDialect(StrCompileDialect):
         context: Optional[DefaultExecutionContext] = None,
     ) -> None:
         operation, parameters = self._make_ydb_operation(statement, context, parameters, execute_many=False)
-        cursor.execute(operation, parameters)
+        is_ddl = context.isddl if context is not None else False
+        if is_ddl:
+            cursor.execute_scheme(operation, parameters)
+        else:
+            cursor.execute(operation, parameters)
 
 
 class AsyncYqlDialect(YqlDialect):
@@ -909,4 +910,4 @@ class AsyncYqlDialect(YqlDialect):
     supports_statement_cache = True
 
     def connect(self, *cargs, **cparams):
-        return self.loaded_dbapi.async_connect(*cargs, **cparams)
+        return AdaptedAsyncConnection(util.await_only(self.loaded_dbapi.async_connect(*cargs, **cparams)))
