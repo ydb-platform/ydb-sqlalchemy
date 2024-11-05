@@ -845,7 +845,7 @@ class YqlDialect(StrCompileDialect):
                 if key in types:
                     result[key] = ydb.TypedValue(value_map[key], types[key])
                 else:
-                    result[key] = values[key]
+                    result[key] = value_map[key]
             result_list.append(result)
         return result_list if execute_many else result_list[0]
 
