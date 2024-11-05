@@ -25,7 +25,7 @@ from sqlalchemy.sql.elements import ClauseList
 from sqlalchemy.util.compat import inspect_getfullargspec
 
 import ydb_dbapi as dbapi
-from ydb_sqlalchemy.driver.wrapper import AdaptedAsyncConnection
+from ydb_sqlalchemy.sqlalchemy.dbapi_adapter import AdaptedAsyncConnection
 from ydb_sqlalchemy.sqlalchemy.dml import Upsert
 
 from . import types
