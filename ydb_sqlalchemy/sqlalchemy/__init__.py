@@ -695,6 +695,9 @@ class YqlDialect(StrCompileDialect):
         except dbapi.DatabaseError as e:
             raise NoSuchTableError(qt) from e
 
+    def get_view_names(self, connection, schema=None, **kw: Any):
+        return []
+
     @reflection.cache
     def get_columns(self, connection, table_name, schema=None, **kw):
         table = self._describe_table(connection, table_name, schema)
@@ -849,7 +852,7 @@ class YqlDialect(StrCompileDialect):
             result_list.append(result)
         return result_list if execute_many else result_list[0]
 
-    def _make_ydb_operation(
+    def _prepare_ydb_query(
         self,
         statement: str,
         context: Optional[DefaultExecutionContext] = None,
@@ -872,7 +875,7 @@ class YqlDialect(StrCompileDialect):
 
     def do_ping(self, dbapi_connection: dbapi.Connection) -> bool:
         cursor = dbapi_connection.cursor()
-        statement, _ = self._make_ydb_operation(self._dialect_specific_select_one)
+        statement, _ = self._prepare_ydb_query(self._dialect_specific_select_one)
         try:
             cursor.execute(statement)
         finally:
@@ -886,7 +889,7 @@ class YqlDialect(StrCompileDialect):
         parameters: Optional[Sequence[Mapping[str, Any]]],
         context: Optional[DefaultExecutionContext] = None,
     ) -> None:
-        operation, parameters = self._make_ydb_operation(statement, context, parameters, execute_many=True)
+        operation, parameters = self._prepare_ydb_query(statement, context, parameters, execute_many=True)
         cursor.executemany(operation, parameters)
 
     def do_execute(
@@ -896,7 +899,7 @@ class YqlDialect(StrCompileDialect):
         parameters: Optional[Mapping[str, Any]] = None,
         context: Optional[DefaultExecutionContext] = None,
     ) -> None:
-        operation, parameters = self._make_ydb_operation(statement, context, parameters, execute_many=False)
+        operation, parameters = self._prepare_ydb_query(statement, context, parameters, execute_many=False)
         is_ddl = context.isddl if context is not None else False
         if is_ddl:
             cursor.execute_scheme(operation, parameters)
