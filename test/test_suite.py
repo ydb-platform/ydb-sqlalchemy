@@ -68,7 +68,7 @@ from sqlalchemy.testing.suite.test_types import (
 from sqlalchemy.testing.suite.test_types import DateTimeTest as _DateTimeTest
 from sqlalchemy.testing.suite.test_types import IntegerTest as _IntegerTest
 from sqlalchemy.testing.suite.test_types import JSONTest as _JSONTest
-from sqlalchemy.testing.suite.test_types import NativeUUIDTest as _NativeUUIDTest
+
 from sqlalchemy.testing.suite.test_types import NumericTest as _NumericTest
 from sqlalchemy.testing.suite.test_types import StringTest as _StringTest
 from sqlalchemy.testing.suite.test_types import (
@@ -78,12 +78,14 @@ from sqlalchemy.testing.suite.test_types import (
     TimestampMicrosecondsTest as _TimestampMicrosecondsTest,
 )
 from sqlalchemy.testing.suite.test_types import TimeTest as _TimeTest
-from sqlalchemy.testing.suite.test_types import TrueDivTest as _TrueDivTest
 
 from ydb_sqlalchemy.sqlalchemy import types as ydb_sa_types
 
 test_types_suite = sqlalchemy.testing.suite.test_types
 col_creator = test_types_suite.Column
+
+
+OLD_SA = sa.__version__ < "2."
 
 
 def column_getter(*args, **kwargs):
@@ -275,30 +277,35 @@ class BinaryTest(_BinaryTest):
     pass
 
 
-class TrueDivTest(_TrueDivTest):
-    @pytest.mark.skip("Unsupported builtin: FLOOR")
-    def test_floordiv_numeric(self, connection, left, right, expected):
-        pass
+if not OLD_SA:
+    from sqlalchemy.testing.suite.test_types import TrueDivTest as _TrueDivTest
 
-    @pytest.mark.skip("Truediv unsupported for int")
-    def test_truediv_integer(self, connection, left, right, expected):
-        pass
+    class TrueDivTest(_TrueDivTest):
+        @pytest.mark.skip("Unsupported builtin: FLOOR")
+        def test_floordiv_numeric(self, connection, left, right, expected):
+            pass
 
-    @pytest.mark.skip("Truediv unsupported for int")
-    def test_truediv_integer_bound(self, connection):
-        pass
+        @pytest.mark.skip("Truediv unsupported for int")
+        def test_truediv_integer(self, connection, left, right, expected):
+            pass
 
-    @pytest.mark.skip("Numeric is not Decimal")
-    def test_truediv_numeric(self):
-        # SqlAlchemy maybe eat Decimal and throw Double
-        pass
+        @pytest.mark.skip("Truediv unsupported for int")
+        def test_truediv_integer_bound(self, connection):
+            pass
 
-    @testing.combinations(("6.25", "2.5", 2.5), argnames="left, right, expected")
-    def test_truediv_float(self, connection, left, right, expected):
-        eq_(
-            connection.scalar(select(literal_column(left, type_=sa.Float()) / literal_column(right, type_=sa.Float()))),
-            expected,
-        )
+        @pytest.mark.skip("Numeric is not Decimal")
+        def test_truediv_numeric(self):
+            # SqlAlchemy maybe eat Decimal and throw Double
+            pass
+
+        @testing.combinations(("6.25", "2.5", 2.5), argnames="left, right, expected")
+        def test_truediv_float(self, connection, left, right, expected):
+            eq_(
+                connection.scalar(
+                    select(literal_column(left, type_=sa.Float()) / literal_column(right, type_=sa.Float()))
+                ),
+                expected,
+            )
 
 
 class ExistsTest(_ExistsTest):
@@ -539,9 +546,12 @@ class ContainerTypesTest(fixtures.TablesTest):
         eq_(connection.execute(sa.select(table)).fetchall(), [(1,), (2,), (3,)])
 
 
-@pytest.mark.skip("uuid unsupported for columns")
-class NativeUUIDTest(_NativeUUIDTest):
-    pass
+if not OLD_SA:
+    from sqlalchemy.testing.suite.test_types import NativeUUIDTest as _NativeUUIDTest
+
+    @pytest.mark.skip("uuid unsupported for columns")
+    class NativeUUIDTest(_NativeUUIDTest):
+        pass
 
 
 @pytest.mark.skip("unsupported Time data type")

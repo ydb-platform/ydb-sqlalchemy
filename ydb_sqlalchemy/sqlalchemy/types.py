@@ -1,6 +1,13 @@
 from typing import Any, Mapping, Type, Union
 
-from sqlalchemy import ARRAY, ColumnElement, exc, types
+from sqlalchemy import __version__ as sa_version
+
+if sa_version.startswith("2."):
+    from sqlalchemy import ColumnElement
+else:
+    from sqlalchemy.sql.expression import ColumnElement
+
+from sqlalchemy import ARRAY, exc, types
 from sqlalchemy.sql import type_api
 
 from .datetime_types import YqlDateTime, YqlTimestamp  # noqa: F401

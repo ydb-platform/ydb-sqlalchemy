@@ -1,13 +1,11 @@
 import datetime
 from typing import Optional
 
-from sqlalchemy import Dialect
 from sqlalchemy import types as sqltypes
-from sqlalchemy.sql.type_api import _BindProcessorType, _ResultProcessorType
 
 
 class YqlTimestamp(sqltypes.TIMESTAMP):
-    def result_processor(self, dialect: Dialect, coltype: str) -> Optional[_ResultProcessorType[datetime.datetime]]:
+    def result_processor(self, dialect, coltype):
         def process(value: Optional[datetime.datetime]) -> Optional[datetime.datetime]:
             if value is None:
                 return None
@@ -19,7 +17,7 @@ class YqlTimestamp(sqltypes.TIMESTAMP):
 
 
 class YqlDateTime(YqlTimestamp, sqltypes.DATETIME):
-    def bind_processor(self, dialect: Dialect) -> Optional[_BindProcessorType[datetime.datetime]]:
+    def bind_processor(self, dialect):
         def process(value: Optional[datetime.datetime]) -> Optional[int]:
             if value is None:
                 return None
