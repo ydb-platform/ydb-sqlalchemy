@@ -1,3 +1,4 @@
+## 0.1.0 ##
 * Update DBAPI to QueryService
 
 ## 0.0.1b23 ##
