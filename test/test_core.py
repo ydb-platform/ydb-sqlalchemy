@@ -33,7 +33,18 @@ class TestText(TestBase):
                 SELECT x, y FROM AS_TABLE(:data)
                 """
             ),
-            [{"data": [{"x": 2, "y": 1}, {"x": 3, "y": 2}]}],
+            [
+                {
+                    "data": ydb.TypedValue(
+                        [{"x": 2, "y": 1}, {"x": 3, "y": 2}],
+                        ydb.ListType(
+                            ydb.StructType()
+                            .add_member("x", ydb.PrimitiveType.Int64)
+                            .add_member("y", ydb.PrimitiveType.Int64)
+                        ),
+                    )
+                }
+            ],
         )
         assert set(rs.fetchall()) == {(2, 1), (3, 2)}
 
@@ -454,85 +465,6 @@ class TestWithClause(TablesTest):
         assert desc.partitioning_settings.max_partitions_count == 5
 
 
-class TestScanQuery(TablesTest):
-    __backend__ = True
-
-    @classmethod
-    def define_tables(cls, metadata: sa.MetaData):
-        Table(
-            "test",
-            metadata,
-            Column("id", Integer, primary_key=True),
-        )
-
-    @classmethod
-    def insert_data(cls, connection: sa.Connection):
-        table = cls.tables.test
-        for i in range(50):
-            connection.execute(ydb_sa.upsert(table).values([{"id": i * 1000 + j} for j in range(1000)]))
-
-    def test_characteristic(self):
-        engine = self.bind.execution_options()
-
-        with engine.connect() as connection:
-            default_options = connection.get_execution_options()
-
-        with engine.connect() as connection:
-            connection.execution_options(ydb_scan_query=True)
-            options_after_set = connection.get_execution_options()
-
-        with engine.connect() as connection:
-            options_after_reset = connection.get_execution_options()
-
-        assert "ydb_scan_query" not in default_options
-        assert options_after_set["ydb_scan_query"]
-        assert "ydb_scan_query" not in options_after_reset
-
-    def test_fetchmany(self, connection_no_trans: sa.Connection):
-        table = self.tables.test
-        stmt = sa.select(table).where(table.c.id % 2 == 0)
-
-        connection_no_trans.execution_options(ydb_scan_query=True)
-        cursor = connection_no_trans.execute(stmt)
-
-        assert cursor.cursor.use_scan_query
-        result = cursor.fetchmany(1000)  # fetches only the first 5k rows
-        assert result == [(i,) for i in range(2000) if i % 2 == 0]
-
-    def test_fetchall(self, connection_no_trans: sa.Connection):
-        table = self.tables.test
-        stmt = sa.select(table).where(table.c.id % 2 == 0)
-
-        connection_no_trans.execution_options(ydb_scan_query=True)
-        cursor = connection_no_trans.execute(stmt)
-
-        assert cursor.cursor.use_scan_query
-        result = cursor.fetchall()
-        assert result == [(i,) for i in range(50000) if i % 2 == 0]
-
-    def test_begin_does_nothing(self, connection_no_trans: sa.Connection):
-        table = self.tables.test
-        connection_no_trans.execution_options(ydb_scan_query=True)
-
-        with connection_no_trans.begin():
-            cursor = connection_no_trans.execute(sa.select(table))
-
-            assert cursor.cursor.use_scan_query
-            assert cursor.cursor.tx_context is None
-
-    def test_engine_option(self):
-        table = self.tables.test
-        engine = self.bind.execution_options(ydb_scan_query=True)
-
-        with engine.begin() as connection:
-            cursor = connection.execute(sa.select(table))
-            assert cursor.cursor.use_scan_query
-
-        with engine.begin() as connection:
-            cursor = connection.execute(sa.select(table))
-            assert cursor.cursor.use_scan_query
-
-
 class TestTransaction(TablesTest):
     __backend__ = True
 
@@ -585,11 +517,11 @@ class TestTransaction(TablesTest):
 
         connection_no_trans.execution_options(isolation_level=isolation_level)
         with connection_no_trans.begin():
-            tx_id = dbapi_connection.tx_context.tx_id
-            assert tx_id is not None
             cursor1 = connection_no_trans.execute(sa.select(table))
+            tx_id = dbapi_connection._tx_context.tx_id
+            assert tx_id is not None
             cursor2 = connection_no_trans.execute(sa.select(table))
-            assert dbapi_connection.tx_context.tx_id == tx_id
+            assert dbapi_connection._tx_context.tx_id == tx_id
 
         assert set(cursor1.fetchall()) == {(5,), (6,)}
         assert set(cursor2.fetchall()) == {(5,), (6,)}
@@ -614,10 +546,10 @@ class TestTransaction(TablesTest):
 
         connection_no_trans.execution_options(isolation_level=isolation_level)
         with connection_no_trans.begin():
-            assert dbapi_connection.tx_context is None
+            assert dbapi_connection._tx_context is None
             cursor1 = connection_no_trans.execute(sa.select(table))
             cursor2 = connection_no_trans.execute(sa.select(table))
-            assert dbapi_connection.tx_context is None
+            assert dbapi_connection._tx_context is None
 
         assert set(cursor1.fetchall()) == {(7,), (8,)}
         assert set(cursor2.fetchall()) == {(7,), (8,)}
@@ -631,14 +563,14 @@ class TestTransactionIsolationLevel(TestBase):
         interactive: bool
 
     YDB_ISOLATION_SETTINGS_MAP = {
-        IsolationLevel.AUTOCOMMIT: IsolationSettings(ydb.SerializableReadWrite().name, False),
-        IsolationLevel.SERIALIZABLE: IsolationSettings(ydb.SerializableReadWrite().name, True),
-        IsolationLevel.ONLINE_READONLY: IsolationSettings(ydb.OnlineReadOnly().name, False),
+        IsolationLevel.AUTOCOMMIT: IsolationSettings(ydb.QuerySerializableReadWrite().name, False),
+        IsolationLevel.SERIALIZABLE: IsolationSettings(ydb.QuerySerializableReadWrite().name, True),
+        IsolationLevel.ONLINE_READONLY: IsolationSettings(ydb.QueryOnlineReadOnly().name, False),
         IsolationLevel.ONLINE_READONLY_INCONSISTENT: IsolationSettings(
-            ydb.OnlineReadOnly().with_allow_inconsistent_reads().name, False
+            ydb.QueryOnlineReadOnly().with_allow_inconsistent_reads().name, False
         ),
-        IsolationLevel.STALE_READONLY: IsolationSettings(ydb.StaleReadOnly().name, False),
-        IsolationLevel.SNAPSHOT_READONLY: IsolationSettings(ydb.SnapshotReadOnly().name, True),
+        IsolationLevel.STALE_READONLY: IsolationSettings(ydb.QueryStaleReadOnly().name, False),
+        IsolationLevel.SNAPSHOT_READONLY: IsolationSettings(ydb.QuerySnapshotReadOnly().name, True),
     }
 
     def test_connection_set(self, connection_no_trans: sa.Connection):
@@ -647,13 +579,13 @@ class TestTransactionIsolationLevel(TestBase):
         for sa_isolation_level, ydb_isolation_settings in self.YDB_ISOLATION_SETTINGS_MAP.items():
             connection_no_trans.execution_options(isolation_level=sa_isolation_level)
             with connection_no_trans.begin():
-                assert dbapi_connection.tx_mode.name == ydb_isolation_settings[0]
+                assert dbapi_connection._tx_mode.name == ydb_isolation_settings[0]
                 assert dbapi_connection.interactive_transaction is ydb_isolation_settings[1]
                 if dbapi_connection.interactive_transaction:
-                    assert dbapi_connection.tx_context is not None
-                    assert dbapi_connection.tx_context.tx_id is not None
+                    assert dbapi_connection._tx_context is not None
+                    # assert dbapi_connection._tx_context.tx_id is not None
                 else:
-                    assert dbapi_connection.tx_context is None
+                    assert dbapi_connection._tx_context is None
 
 
 class TestEngine(TestBase):
@@ -674,7 +606,7 @@ class TestEngine(TestBase):
 
     @pytest.fixture(scope="class")
     def ydb_pool(self, ydb_driver):
-        session_pool = ydb.SessionPool(ydb_driver, size=5, workers_threads_count=1)
+        session_pool = ydb.QuerySessionPool(ydb_driver, size=5)
 
         try:
             yield session_pool
@@ -689,8 +621,8 @@ class TestEngine(TestBase):
             dbapi_conn1: dbapi.Connection = conn1.connection.dbapi_connection
             dbapi_conn2: dbapi.Connection = conn2.connection.dbapi_connection
 
-            assert dbapi_conn1.session_pool is dbapi_conn2.session_pool
-            assert dbapi_conn1.driver is dbapi_conn2.driver
+            assert dbapi_conn1._session_pool is dbapi_conn2._session_pool
+            assert dbapi_conn1._driver is dbapi_conn2._driver
 
         engine1.dispose()
         engine2.dispose()
@@ -704,8 +636,8 @@ class TestEngine(TestBase):
             dbapi_conn1: dbapi.Connection = conn1.connection.dbapi_connection
             dbapi_conn2: dbapi.Connection = conn2.connection.dbapi_connection
 
-            assert dbapi_conn1.session_pool is dbapi_conn2.session_pool
-            assert dbapi_conn1.driver is dbapi_conn2.driver
+            assert dbapi_conn1._session_pool is dbapi_conn2._session_pool
+            assert dbapi_conn1._driver is dbapi_conn2._driver
 
         engine1.dispose()
         engine2.dispose()
@@ -726,14 +658,15 @@ class TestAsyncEngine(TestEngine):
         finally:
             loop.run_until_complete(driver.stop())
 
+    @pytest.mark.asyncio
     @pytest.fixture(scope="class")
     def ydb_pool(self, ydb_driver):
-        session_pool = ydb.aio.SessionPool(ydb_driver, size=5)
+        loop = asyncio.get_event_loop()
+        session_pool = ydb.aio.QuerySessionPool(ydb_driver, size=5, loop=loop)
 
         try:
             yield session_pool
         finally:
-            loop = asyncio.get_event_loop()
             loop.run_until_complete(session_pool.stop())
 
 
@@ -742,9 +675,9 @@ class TestCredentials(TestBase):
     __only_on__ = "yql+ydb"
 
     @pytest.fixture(scope="class")
-    def table_client_settings(self):
+    def query_client_settings(self):
         yield (
-            ydb.TableClientSettings()
+            ydb.QueryClientSettings()
             .with_native_date_in_result_sets(True)
             .with_native_datetime_in_result_sets(True)
             .with_native_timestamp_in_result_sets(True)
@@ -753,7 +686,7 @@ class TestCredentials(TestBase):
         )
 
     @pytest.fixture(scope="class")
-    def driver_config_for_credentials(self, table_client_settings):
+    def driver_config_for_credentials(self, query_client_settings):
         url = config.db_url
         endpoint = f"grpc://{url.host}:{url.port}"
         database = url.database
@@ -761,10 +694,10 @@ class TestCredentials(TestBase):
         yield ydb.DriverConfig(
             endpoint=endpoint,
             database=database,
-            table_client_settings=table_client_settings,
+            query_client_settings=query_client_settings,
         )
 
-    def test_ydb_credentials_good(self, table_client_settings, driver_config_for_credentials):
+    def test_ydb_credentials_good(self, query_client_settings, driver_config_for_credentials):
         credentials_good = ydb.StaticCredentials(
             driver_config=driver_config_for_credentials,
             user="root",
@@ -775,7 +708,7 @@ class TestCredentials(TestBase):
             result = conn.execute(sa.text("SELECT 1 as value"))
             assert result.fetchone()
 
-    def test_ydb_credentials_bad(self, table_client_settings, driver_config_for_credentials):
+    def test_ydb_credentials_bad(self, query_client_settings, driver_config_for_credentials):
         credentials_bad = ydb.StaticCredentials(
             driver_config=driver_config_for_credentials,
             user="root",

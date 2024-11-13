@@ -506,6 +506,18 @@ class ContainerTypesTest(fixtures.TablesTest):
 
         eq_(connection.scalar(stmt, {"struct": {"id": 1}}), 1)
 
+    def test_struct_type_bind_variable_text(self, connection):
+        rs = connection.execute(
+            sa.text("SELECT :struct.x + :struct.y").bindparams(
+                sa.bindparam(
+                    key="struct",
+                    type_=ydb_sa_types.StructType({"x": sa.Integer, "y": sa.Integer}),
+                    value={"x": 1, "y": 2},
+                )
+            )
+        )
+        assert rs.scalar() == 3
+
     def test_from_as_table(self, connection):
         table = self.tables.container_types_test
 

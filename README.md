@@ -46,7 +46,7 @@ $ tox -e test-all
 
 Run specific test:
 ```bash
-$ tox -e test -- test_dbapi/test_dbapi.py
+$ tox -e test -- test/test_core.py
 ```
 
 Check code style:
