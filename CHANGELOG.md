@@ -1,3 +1,4 @@
+## 0.1.1b1 ##
 * Attempt to support sqlalchemy 1.4+
 
 ## 0.1.0 ##
