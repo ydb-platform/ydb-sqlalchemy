@@ -1,3 +1,5 @@
+* Attempt to support sqlalchemy 1.4+
+
 ## 0.1.0 ##
 * Update DBAPI to QueryService
 
