@@ -15,7 +15,7 @@ on:
         description: Version part
         required: true
         type: choice
-        default: minor
+        default: patch
         options:
           - minor
           - patch
@@ -23,7 +23,7 @@ on:
         description: Is beta version
         required: true
         type: boolean
-        default: True
+        default: False
 jobs:
   publish:
     env:
