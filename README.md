@@ -4,8 +4,10 @@
 [![Functional tests](https://github.com/ydb-platform/ydb-sqlalchemy/actions/workflows/tests.yml/badge.svg)](https://github.com/ydb-platform/ydb-sqlalchemy/actions/workflows/tests.yml)
 [![Style checks](https://github.com/ydb-platform/ydb-sqlalchemy/actions/workflows/style.yml/badge.svg)](https://github.com/ydb-platform/ydb-sqlalchemy/actions/workflows/style.yml)
 
-This repository contains __work in progress__ YQL dialect for SqlAlchemy 2.0.
-Api may be changed in future without backward compatibility.
+This repository contains YQL dialect for SqlAlchemy 2.0.
+
+**Note**: Dialect also works with SqlAlchemy 1.4, but it is not fully tested.
+
 
 ## Installation
 To work with current ydb-sqlalchemy version clone this repo and run from source root:
