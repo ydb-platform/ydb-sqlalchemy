@@ -1,3 +1,5 @@
+* Bump DBAPI version
+
 ## 0.1.1 ##
 * sqlalchemy 1.4+ partial support
 
