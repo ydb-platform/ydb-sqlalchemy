@@ -1,3 +1,5 @@
+* Fix declare param_name cutting
+
 ## 0.1.2 ##
 * Bump DBAPI version
 
