@@ -354,7 +354,7 @@ class YqlDialect(StrCompileDialect):
     def _add_declare_for_yql_stmt_vars_impl(self, statement, parameters_types):
         declarations = "\n".join(
             [
-                f"DECLARE $`{param_name[1:]}` as {str(param_type)};"
+                f"DECLARE $`{param_name[1:] if param_name.startswith('$') else param_name}` as {str(param_type)};"
                 for param_name, param_type in parameters_types.items()
             ]
         )
