@@ -1,3 +1,4 @@
+## 0.1.4 ##
 * Add slash to DB name
 
 ## 0.1.3 ##
