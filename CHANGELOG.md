@@ -1,3 +1,5 @@
+* Add slash to DB name
+
 ## 0.1.3 ##
 * Fix declare param_name cutting
 
