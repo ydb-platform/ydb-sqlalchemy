@@ -307,6 +307,15 @@ class YqlDialect(StrCompileDialect):
     def get_ydb_request_settings(self, dbapi_connection: ydb_dbapi.Connection) -> ydb.BaseRequestSettings:
         return dbapi_connection.get_ydb_request_settings()
 
+    def create_connect_args(self, url):
+        args, kwargs = super().create_connect_args(url)
+        # YDB database name should start with '/'
+        if "database" in kwargs:
+            if not kwargs["database"].startswith("/"):
+                kwargs["database"] = "/" + kwargs["database"]
+
+        return [args, kwargs]
+
     def connect(self, *cargs, **cparams):
         return self.dbapi.connect(*cargs, **cparams)
 
