@@ -32,6 +32,8 @@ with engine.connect() as conn:
 
 ```
 
+To setup `alembic` to work with `YDB` please check [this example](https://github.com/ydb-platform/ydb-sqlalchemy/tree/main/examples/alembic).
+
 ## Development
 
 ### Run Tests:
