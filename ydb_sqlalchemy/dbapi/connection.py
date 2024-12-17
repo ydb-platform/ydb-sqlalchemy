@@ -149,20 +149,24 @@ class Connection:
             self._maybe_await(self.tx_context.begin)
 
     def commit(self):
-        if self.tx_context and self.tx_context.tx_id:
-            self._maybe_await(self.tx_context.commit)
-            self.tx_context = None
-        if self.session:
-            self._maybe_await(self.session_pool.release, self.session)
-            self.session = None
+        try:
+            if self.tx_context and self.tx_context.tx_id:
+                self._maybe_await(self.tx_context.commit)
+                self.tx_context = None
+        finally:
+            if self.session:
+                self._maybe_await(self.session_pool.release, self.session)
+                self.session = None
 
     def rollback(self):
-        if self.tx_context and self.tx_context.tx_id:
-            self._maybe_await(self.tx_context.rollback)
-            self.tx_context = None
-        if self.session:
-            self._maybe_await(self.session_pool.release, self.session)
-            self.session = None
+        try:
+            if self.tx_context and self.tx_context.tx_id:
+                self._maybe_await(self.tx_context.rollback)
+                self.tx_context = None
+        finally:
+            if self.session:
+                self._maybe_await(self.session_pool.release, self.session)
+                self.session = None
 
     def close(self):
         self.rollback()
