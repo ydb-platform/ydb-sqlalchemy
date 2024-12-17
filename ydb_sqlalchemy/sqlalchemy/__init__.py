@@ -82,23 +82,23 @@ def _get_column_info(t):
 
 
 class YdbRequestSettingsCharacteristic(characteristics.ConnectionCharacteristic):
-    def reset_characteristic(self, dialect: "YqlDialect", dbapi_connection: ydb_dbapi.Connection) -> None:
+    def reset_characteristic(self, dialect: "YDBDialect", dbapi_connection: ydb_dbapi.Connection) -> None:
         dialect.reset_ydb_request_settings(dbapi_connection)
 
     def set_characteristic(
-        self, dialect: "YqlDialect", dbapi_connection: ydb_dbapi.Connection, value: ydb.BaseRequestSettings
+        self, dialect: "YDBDialect", dbapi_connection: ydb_dbapi.Connection, value: ydb.BaseRequestSettings
     ) -> None:
         dialect.set_ydb_request_settings(dbapi_connection, value)
 
     def get_characteristic(
-        self, dialect: "YqlDialect", dbapi_connection: ydb_dbapi.Connection
+        self, dialect: "YDBDialect", dbapi_connection: ydb_dbapi.Connection
     ) -> ydb.BaseRequestSettings:
         return dialect.get_ydb_request_settings(dbapi_connection)
 
 
-class YqlDialect(StrCompileDialect):
-    name = "yql"
-    driver = "ydb"
+class YDBDialect(StrCompileDialect):
+    name = "ydb"
+    driver = "ydb_sync"
 
     supports_alter = False
     max_identifier_length = 63
@@ -441,7 +441,7 @@ class YqlDialect(StrCompileDialect):
             cursor.execute(operation, parameters)
 
 
-class AsyncYqlDialect(YqlDialect):
+class AsyncYDBDialect(YDBDialect):
     driver = "ydb_async"
     is_async = True
     supports_statement_cache = True
