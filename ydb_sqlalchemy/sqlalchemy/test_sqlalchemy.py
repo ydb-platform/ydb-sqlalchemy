@@ -1,10 +1,10 @@
 import sqlalchemy as sa
 
-from . import YqlDialect, types
+from . import YDBDialect, types
 
 
 def test_casts():
-    dialect = YqlDialect()
+    dialect = YDBDialect()
     expr = sa.literal_column("1/2")
 
     res_exprs = [
