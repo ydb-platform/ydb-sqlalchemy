@@ -1,3 +1,5 @@
+* fix: release sessions without transaction id
+
 ## 0.0.1b23 ##
 * Add request settings to execution options
 
