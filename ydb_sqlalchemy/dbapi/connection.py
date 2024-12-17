@@ -57,6 +57,7 @@ class Connection:
         self.interactive_transaction: bool = False  # AUTOCOMMIT
         self.tx_mode: ydb.AbstractTransactionModeBuilder = ydb.SerializableReadWrite()
         self.tx_context: Optional[ydb.TxContext] = None
+        self.session: Optional[ydb.Session] = None
         self.use_scan_query: bool = False
         self.request_settings: ydb.BaseRequestSettings = ydb.BaseRequestSettings()
 
@@ -139,22 +140,29 @@ class Connection:
 
     def begin(self):
         self.tx_context = None
+        if self.session:
+            self._maybe_await(self.session_pool.release, self.session)
+            self.session = None
         if self.interactive_transaction and not self.use_scan_query:
-            session = self._maybe_await(self.session_pool.acquire)
-            self.tx_context = session.transaction(self.tx_mode)
+            self.session = self._maybe_await(self.session_pool.acquire)
+            self.tx_context = self.session.transaction(self.tx_mode)
             self._maybe_await(self.tx_context.begin)
 
     def commit(self):
         if self.tx_context and self.tx_context.tx_id:
             self._maybe_await(self.tx_context.commit)
-            self._maybe_await(self.session_pool.release, self.tx_context.session)
             self.tx_context = None
+        if self.session:
+            self._maybe_await(self.session_pool.release, self.session)
+            self.session = None
 
     def rollback(self):
         if self.tx_context and self.tx_context.tx_id:
             self._maybe_await(self.tx_context.rollback)
-            self._maybe_await(self.session_pool.release, self.tx_context.session)
             self.tx_context = None
+        if self.session:
+            self._maybe_await(self.session_pool.release, self.session)
+            self.session = None
 
     def close(self):
         self.rollback()
