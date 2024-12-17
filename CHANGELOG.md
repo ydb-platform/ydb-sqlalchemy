@@ -1,3 +1,4 @@
+## 0.0.1b24 ##
 * fix: release sessions without transaction id
 
 ## 0.0.1b23 ##
