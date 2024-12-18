@@ -1,3 +1,5 @@
+* release sessions even in case of commit or rollback error
+
 ## 0.0.1b24 ##
 * fix: release sessions without transaction id
 
