@@ -1,3 +1,5 @@
+* Bump ydb-dbapi version
+
 ## 0.1.4 ##
 * Add slash to DB name
 
