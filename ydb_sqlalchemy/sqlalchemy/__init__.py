@@ -5,11 +5,11 @@ Work in progress, breaking changes are possible.
 
 import collections
 import collections.abc
-from typing import Any, Mapping, Optional, Sequence, Tuple, Union
+from typing import Any, Mapping, Optional, Sequence, Tuple, Union, Type
 
 import sqlalchemy as sa
 import ydb
-from sqlalchemy import util
+from sqlalchemy import util, AsyncAdaptedQueuePool, URL, Pool
 from sqlalchemy.engine import characteristics, reflection
 from sqlalchemy.engine.default import DefaultExecutionContext, StrCompileDialect
 from sqlalchemy.exc import NoSuchTableError
@@ -22,9 +22,9 @@ from ydb_sqlalchemy.sqlalchemy.dbapi_adapter import AdaptedAsyncConnection
 from ydb_sqlalchemy.sqlalchemy.dml import Upsert
 
 from ydb_sqlalchemy.sqlalchemy.compiler import YqlCompiler, YqlDDLCompiler, YqlIdentifierPreparer, YqlTypeCompiler
-
+from ydb_sqlalchemy.sqlalchemy.dbapi_adapter import AdaptedAsyncCursor
+from ydb_dbapi.utils import CursorStatus
 from . import types
-
 
 OLD_SA = sa.__version__ < "2."
 
@@ -86,12 +86,12 @@ class YdbRequestSettingsCharacteristic(characteristics.ConnectionCharacteristic)
         dialect.reset_ydb_request_settings(dbapi_connection)
 
     def set_characteristic(
-        self, dialect: "YqlDialect", dbapi_connection: ydb_dbapi.Connection, value: ydb.BaseRequestSettings
+            self, dialect: "YqlDialect", dbapi_connection: ydb_dbapi.Connection, value: ydb.BaseRequestSettings
     ) -> None:
         dialect.set_ydb_request_settings(dbapi_connection, value)
 
     def get_characteristic(
-        self, dialect: "YqlDialect", dbapi_connection: ydb_dbapi.Connection
+            self, dialect: "YqlDialect", dbapi_connection: ydb_dbapi.Connection
     ) -> ydb.BaseRequestSettings:
         return dialect.get_ydb_request_settings(dbapi_connection)
 
@@ -179,11 +179,11 @@ class YqlDialect(StrCompileDialect):
         return cls.import_dbapi()
 
     def __init__(
-        self,
-        json_serializer=None,
-        json_deserializer=None,
-        _add_declare_for_yql_stmt_vars=False,
-        **kwargs,
+            self,
+            json_serializer=None,
+            json_deserializer=None,
+            _add_declare_for_yql_stmt_vars=False,
+            **kwargs,
     ):
         super().__init__(**kwargs)
 
@@ -295,9 +295,9 @@ class YqlDialect(StrCompileDialect):
         return dbapi_connection.get_isolation_level()
 
     def set_ydb_request_settings(
-        self,
-        dbapi_connection: ydb_dbapi.Connection,
-        value: ydb.BaseRequestSettings,
+            self,
+            dbapi_connection: ydb_dbapi.Connection,
+            value: ydb.BaseRequestSettings,
     ) -> None:
         dbapi_connection.set_ydb_request_settings(value)
 
@@ -332,10 +332,10 @@ class YqlDialect(StrCompileDialect):
         return "`" + variable + "`"
 
     def _format_variables(
-        self,
-        statement: str,
-        parameters: Optional[Union[Sequence[Mapping[str, Any]], Mapping[str, Any]]],
-        execute_many: bool,
+            self,
+            statement: str,
+            parameters: Optional[Union[Sequence[Mapping[str, Any]], Mapping[str, Any]]],
+            execute_many: bool,
     ) -> Tuple[str, Optional[Union[Sequence[Mapping[str, Any]], Mapping[str, Any]]]]:
         formatted_statement = statement
         formatted_parameters = None
@@ -370,7 +370,7 @@ class YqlDialect(StrCompileDialect):
         return f"{declarations}\n{statement}"
 
     def __merge_parameters_values_and_types(
-        self, values: Mapping[str, Any], types: Mapping[str, Any], execute_many: bool
+            self, values: Mapping[str, Any], types: Mapping[str, Any], execute_many: bool
     ) -> Sequence[Mapping[str, ydb.TypedValue]]:
         if isinstance(values, collections.abc.Mapping):
             values = [values]
@@ -387,11 +387,11 @@ class YqlDialect(StrCompileDialect):
         return result_list if execute_many else result_list[0]
 
     def _prepare_ydb_query(
-        self,
-        statement: str,
-        context: Optional[DefaultExecutionContext] = None,
-        parameters: Optional[Union[Sequence[Mapping[str, Any]], Mapping[str, Any]]] = None,
-        execute_many: bool = False,
+            self,
+            statement: str,
+            context: Optional[DefaultExecutionContext] = None,
+            parameters: Optional[Union[Sequence[Mapping[str, Any]], Mapping[str, Any]]] = None,
+            execute_many: bool = False,
     ) -> Tuple[Optional[Union[Sequence[Mapping[str, Any]], Mapping[str, Any]]]]:
         is_ddl = context.isddl if context is not None else False
 
@@ -417,21 +417,21 @@ class YqlDialect(StrCompileDialect):
         return True
 
     def do_executemany(
-        self,
-        cursor: ydb_dbapi.Cursor,
-        statement: str,
-        parameters: Optional[Sequence[Mapping[str, Any]]],
-        context: Optional[DefaultExecutionContext] = None,
+            self,
+            cursor: ydb_dbapi.Cursor,
+            statement: str,
+            parameters: Optional[Sequence[Mapping[str, Any]]],
+            context: Optional[DefaultExecutionContext] = None,
     ) -> None:
         operation, parameters = self._prepare_ydb_query(statement, context, parameters, execute_many=True)
         cursor.executemany(operation, parameters)
 
     def do_execute(
-        self,
-        cursor: ydb_dbapi.Cursor,
-        statement: str,
-        parameters: Optional[Mapping[str, Any]] = None,
-        context: Optional[DefaultExecutionContext] = None,
+            self,
+            cursor: ydb_dbapi.Cursor,
+            statement: str,
+            parameters: Optional[Mapping[str, Any]] = None,
+            context: Optional[DefaultExecutionContext] = None,
     ) -> None:
         operation, parameters = self._prepare_ydb_query(statement, context, parameters, execute_many=False)
         is_ddl = context.isddl if context is not None else False
@@ -441,10 +441,44 @@ class YqlDialect(StrCompileDialect):
             cursor.execute(operation, parameters)
 
 
+
+
+
+class AsyncCursor(AdaptedAsyncCursor):
+    def fetchone(self):
+        return self._cursor._fetchone_from_buffer()
+
+    def fetchmany(self, size=None):
+        size = size or self.arraysize
+        return self._cursor._fetchmany_from_buffer(size)
+
+    def fetchall(self):
+        return self._cursor._fetchall_from_buffer()
+
+    def close(self):
+        self._cursor._state = CursorStatus.closed
+
+
+class AsyncConnection(AdaptedAsyncConnection):
+    def cursor(self):
+        return AsyncCursor(self._connection.cursor())
+
+
 class AsyncYqlDialect(YqlDialect):
     driver = "ydb_async"
     is_async = True
     supports_statement_cache = True
 
+    def __init__(self, json_serializer=None,
+                 json_deserializer=None,
+                 _add_declare_for_yql_stmt_vars=True,
+                 **kwargs):
+        super().__init__(json_serializer=json_serializer, json_deserializer=json_deserializer,
+                         _add_declare_for_yql_stmt_vars=_add_declare_for_yql_stmt_vars,
+                         **kwargs)
+
     def connect(self, *cargs, **cparams):
-        return AdaptedAsyncConnection(util.await_only(self.dbapi.async_connect(*cargs, **cparams)))
+        return AsyncConnection(util.await_only(self.dbapi.async_connect(*cargs, **cparams)))
+
+    def get_dialect_pool_class(self, url: URL) -> Type[Pool]:
+        return AsyncAdaptedQueuePool
