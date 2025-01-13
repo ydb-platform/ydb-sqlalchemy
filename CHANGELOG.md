@@ -1,3 +1,5 @@
+* Bump ydb-dbapi version to 0.1.7
+
 ## 0.1.5 ##
 * Bump ydb-dbapi version
 
