@@ -1,3 +1,5 @@
+* Fix async cursor fetch methods
+
 ## 0.1.6 ##
 * Bump ydb-dbapi version to 0.1.7
 
