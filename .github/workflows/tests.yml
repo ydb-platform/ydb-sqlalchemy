@@ -19,8 +19,7 @@ jobs:
       max-parallel: 4
       matrix:
         python-version: [3.9]
-        environment: [test]
-        folder: [ydb_sqlalchemy, test]
+        environment: [test-unit, test-dialect]
 
     steps:
     - uses: actions/checkout@v1
@@ -34,4 +33,4 @@ jobs:
         python -m pip install --upgrade pip
         pip install tox==4.2.6
     - name: Run unit tests
-      run: tox -e ${{ matrix.environment }} -- ${{ matrix.folder }}
+      run: tox -e ${{ matrix.environment }}

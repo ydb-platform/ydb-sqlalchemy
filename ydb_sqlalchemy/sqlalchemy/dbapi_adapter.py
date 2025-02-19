@@ -87,13 +87,13 @@ class AdaptedAsyncCursor:
         return self._cursor.rowcount
 
     def fetchone(self):
-        return await_only(self._cursor.fetchone())
+        return self._cursor.fetchone()
 
     def fetchmany(self, size=None):
-        return await_only(self._cursor.fetchmany(size=size))
+        return self._cursor.fetchmany(size=size)
 
     def fetchall(self):
-        return await_only(self._cursor.fetchall())
+        return self._cursor.fetchall()
 
     def execute_scheme(self, sql, parameters=None):
         return await_only(self._cursor.execute_scheme(sql, parameters))
