@@ -1,3 +1,4 @@
+## 0.1.7 ##
 * Fix async cursor fetch methods
 
 ## 0.1.6 ##
