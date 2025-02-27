@@ -105,7 +105,7 @@ class AdaptedAsyncCursor:
         return await_only(self._cursor.executemany(sql, parameters))
 
     def close(self):
-        return self._cursor.close()
+        return await_only(self._cursor.close())
 
     def setinputsizes(self, *args):
         pass
