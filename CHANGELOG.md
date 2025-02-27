@@ -1,3 +1,4 @@
+## 0.1.8 ##
 * Fix async cursor close method
 
 ## 0.1.7 ##
