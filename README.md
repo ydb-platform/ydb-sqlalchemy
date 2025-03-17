@@ -4,7 +4,7 @@
 [![Functional tests](https://github.com/ydb-platform/ydb-sqlalchemy/actions/workflows/tests.yml/badge.svg)](https://github.com/ydb-platform/ydb-sqlalchemy/actions/workflows/tests.yml)
 [![Style checks](https://github.com/ydb-platform/ydb-sqlalchemy/actions/workflows/style.yml/badge.svg)](https://github.com/ydb-platform/ydb-sqlalchemy/actions/workflows/style.yml)
 
-This repository contains YQL dialect for SqlAlchemy 2.0.
+This repository contains YDB dialect for SqlAlchemy 2.0.
 
 **Note**: Dialect also works with SqlAlchemy 1.4, but it is not fully tested.
 
@@ -24,7 +24,7 @@ Connect to local YDB using SqlAlchemy:
 import sqlalchemy as sa
 
 
-engine = sa.create_engine("yql+ydb://localhost:2136/local")
+engine = sa.create_engine("ydb://localhost:2136/local")
 
 with engine.connect() as conn:
   rs = conn.execute(sa.text("SELECT 1 AS value"))
