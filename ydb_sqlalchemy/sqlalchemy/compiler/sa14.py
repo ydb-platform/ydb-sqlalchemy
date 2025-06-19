@@ -1,4 +1,5 @@
 from typing import Union
+
 import sqlalchemy as sa
 import ydb
 

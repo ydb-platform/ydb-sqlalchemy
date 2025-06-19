@@ -1,6 +1,7 @@
+from typing import Union
+
 import sqlalchemy as sa
 import ydb
-
 from sqlalchemy.exc import CompileError
 from sqlalchemy.sql import literal_column
 from sqlalchemy.util.compat import inspect_getfullargspec
@@ -11,7 +12,6 @@ from .base import (
     BaseYqlIdentifierPreparer,
     BaseYqlTypeCompiler,
 )
-from typing import Union
 
 
 class YqlTypeCompiler(BaseYqlTypeCompiler):
@@ -99,11 +99,7 @@ class YqlDDLCompiler(BaseYqlDDLCompiler):
         text += "PRIMARY KEY "
         text += "(%s)" % ", ".join(
             self.preparer.quote(c.name)
-            for c in (
-                constraint.columns_autoinc_first
-                if constraint._implicit_generated
-                else constraint.columns
-            )
+            for c in (constraint.columns_autoinc_first if constraint._implicit_generated else constraint.columns)
         )
         text += self.define_constraint_deferrability(constraint)
         return text

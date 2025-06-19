@@ -1,8 +1,8 @@
 import collections
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Type, Union
+
 import sqlalchemy as sa
 import ydb
-from ydb_dbapi import NotSupportedError
-
 from sqlalchemy.exc import CompileError
 from sqlalchemy.sql import ddl
 from sqlalchemy.sql.compiler import (
@@ -12,21 +12,9 @@ from sqlalchemy.sql.compiler import (
     StrSQLTypeCompiler,
     selectable,
 )
-from typing import (
-    Any,
-    Dict,
-    List,
-    Mapping,
-    Sequence,
-    Optional,
-    Tuple,
-    Type,
-    Union,
-)
-
+from ydb_dbapi import NotSupportedError
 
 from .. import types
-
 
 OLD_SA = sa.__version__ < "2."
 if OLD_SA:
