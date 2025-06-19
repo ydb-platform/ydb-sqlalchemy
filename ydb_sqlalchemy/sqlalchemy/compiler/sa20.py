@@ -89,4 +89,21 @@ class YqlCompiler(BaseYqlCompiler):
 
 
 class YqlDDLCompiler(BaseYqlDDLCompiler):
-    ...
+    def visit_foreign_key_constraint(self, constraint, **kwargs):
+        return None
+
+    def visit_primary_key_constraint(self, constraint, **kwargs):
+        if len(constraint) == 0:
+            return ""
+        text = ""
+        text += "PRIMARY KEY "
+        text += "(%s)" % ", ".join(
+            self.preparer.quote(c.name)
+            for c in (
+                constraint.columns_autoinc_first
+                if constraint._implicit_generated
+                else constraint.columns
+            )
+        )
+        text += self.define_constraint_deferrability(constraint)
+        return text
