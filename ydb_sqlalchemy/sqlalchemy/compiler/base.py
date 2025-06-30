@@ -307,6 +307,10 @@ class BaseYqlCompiler(StrSQLCompiler):
             + [name]
         ) % {"expr": self.function_argspec(func, **kwargs)}
 
+    def visit_concat_func(self, func, **kwargs):
+        arg_sql = " || ".join(self.process(arg, **kwargs) for arg in func.clauses)
+        return arg_sql
+
     def _is_bound_to_nullable_column(self, bind_name: str) -> bool:
         if bind_name in self.column_keys and hasattr(self.compile_state, "dml_table"):
             if bind_name in self.compile_state.dml_table.c:

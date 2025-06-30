@@ -546,6 +546,29 @@ class ContainerTypesTest(fixtures.TablesTest):
         eq_(connection.execute(sa.select(table)).fetchall(), [(1,), (2,), (3,)])
 
 
+class ConcatTest(fixtures.TablesTest):
+    @classmethod
+    def define_tables(cls, metadata):
+        Table(
+            "concat_func_test",
+            metadata,
+            Column("A", String),
+            Column("B", String),
+            sa.PrimaryKeyConstraint("A"),
+            schema=None,
+            test_needs_fk=True,
+        )
+
+    def test_concat_func(self, connection):
+        table = self.tables.concat_func_test
+
+        connection.execute(sa.insert(table).values([{"A": "A", "B": "B"}]))
+
+        stmt = select(func.concat(table.c.A, " ", table.c.B)).limit(1)
+
+        eq_(connection.scalar(stmt), "A B")
+
+
 if not OLD_SA:
     from sqlalchemy.testing.suite.test_types import NativeUUIDTest as _NativeUUIDTest
 
