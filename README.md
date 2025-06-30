@@ -1,7 +1,7 @@
 # YDB Dialect for SQLAlchemy
 ---
-[![PyPI version](https://badge.fury.io/py/ydb-sqlalchemy.svg)](https://badge.fury.io/py/ydb-sqlalchemy)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/ydb-platform/ydb-sqlalchemy/blob/main/LICENSE)
+[![PyPI version](https://badge.fury.io/py/ydb-sqlalchemy.svg)](https://badge.fury.io/py/ydb-sqlalchemy)
 [![Functional tests](https://github.com/ydb-platform/ydb-sqlalchemy/actions/workflows/tests.yml/badge.svg)](https://github.com/ydb-platform/ydb-sqlalchemy/actions/workflows/tests.yml)
 [![Style checks](https://github.com/ydb-platform/ydb-sqlalchemy/actions/workflows/style.yml/badge.svg)](https://github.com/ydb-platform/ydb-sqlalchemy/actions/workflows/style.yml)
 
