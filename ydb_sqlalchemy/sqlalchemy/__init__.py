@@ -136,6 +136,7 @@ class YqlDialect(StrCompileDialect):
     colspecs = {
         sa.types.JSON: types.YqlJSON,
         sa.types.JSON.JSONPathType: types.YqlJSON.YqlJSONPathType,
+        sa.types.Date: types.YqlDate,
         sa.types.DateTime: types.YqlTimestamp,  # Because YDB's DateTime doesn't store microseconds
         sa.types.DATETIME: types.YqlDateTime,
         sa.types.TIMESTAMP: types.YqlTimestamp,
