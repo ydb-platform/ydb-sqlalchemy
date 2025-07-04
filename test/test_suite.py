@@ -68,7 +68,6 @@ from sqlalchemy.testing.suite.test_types import (
 from sqlalchemy.testing.suite.test_types import DateTimeTest as _DateTimeTest
 from sqlalchemy.testing.suite.test_types import IntegerTest as _IntegerTest
 from sqlalchemy.testing.suite.test_types import JSONTest as _JSONTest
-
 from sqlalchemy.testing.suite.test_types import NumericTest as _NumericTest
 from sqlalchemy.testing.suite.test_types import StringTest as _StringTest
 from sqlalchemy.testing.suite.test_types import (

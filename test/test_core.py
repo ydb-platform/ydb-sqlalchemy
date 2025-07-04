@@ -15,11 +15,9 @@ from ydb_sqlalchemy import sqlalchemy as ydb_sa
 from ydb_sqlalchemy.sqlalchemy import types
 
 if sa.__version__ >= "2.":
-    from sqlalchemy import NullPool
-    from sqlalchemy import QueuePool
+    from sqlalchemy import NullPool, QueuePool
 else:
-    from sqlalchemy.pool import NullPool
-    from sqlalchemy.pool import QueuePool
+    from sqlalchemy.pool import NullPool, QueuePool
 
 
 def clear_sql(stm):

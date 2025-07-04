@@ -9,22 +9,24 @@ from typing import Any, Mapping, Optional, Sequence, Tuple, Union
 
 import sqlalchemy as sa
 import ydb
+import ydb_dbapi
 from sqlalchemy import util
 from sqlalchemy.engine import characteristics, reflection
 from sqlalchemy.engine.default import DefaultExecutionContext, StrCompileDialect
 from sqlalchemy.exc import NoSuchTableError
 from sqlalchemy.sql import functions
-
 from sqlalchemy.sql.elements import ClauseList
 
-import ydb_dbapi
+from ydb_sqlalchemy.sqlalchemy.compiler import (
+    YqlCompiler,
+    YqlDDLCompiler,
+    YqlIdentifierPreparer,
+    YqlTypeCompiler,
+)
 from ydb_sqlalchemy.sqlalchemy.dbapi_adapter import AdaptedAsyncConnection
 from ydb_sqlalchemy.sqlalchemy.dml import Upsert
 
-from ydb_sqlalchemy.sqlalchemy.compiler import YqlCompiler, YqlDDLCompiler, YqlIdentifierPreparer, YqlTypeCompiler
-
 from . import types
-
 
 OLD_SA = sa.__version__ < "2."
 

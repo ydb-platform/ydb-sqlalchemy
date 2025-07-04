@@ -1,8 +1,7 @@
+import ydb
 from sqlalchemy.engine.interfaces import AdaptedConnection
-
 from sqlalchemy.util.concurrency import await_only
 from ydb_dbapi import AsyncConnection, AsyncCursor
-import ydb
 
 
 class AdaptedAsyncConnection(AdaptedConnection):
