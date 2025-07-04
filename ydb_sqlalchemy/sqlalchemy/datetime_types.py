@@ -4,6 +4,16 @@ from typing import Optional
 from sqlalchemy import types as sqltypes
 
 
+class YqlDate(sqltypes.Date):
+    def literal_processor(self, dialect):
+        parent = super().literal_processor(dialect)
+
+        def process(value):
+            return f"Date({parent(value)})"
+
+        return process
+
+
 class YqlTimestamp(sqltypes.TIMESTAMP):
     def result_processor(self, dialect, coltype):
         def process(value: Optional[datetime.datetime]) -> Optional[datetime.datetime]:

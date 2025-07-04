@@ -1,3 +1,4 @@
+from datetime import date
 import sqlalchemy as sa
 
 from . import YqlDialect, types
@@ -25,3 +26,12 @@ def test_casts():
         "CAST(1/2 AS UInt8)",
         "String::JoinFromList(ListMap(TOPFREQ(1/2, 5), ($x) -> { RETURN CAST($x AS UTF8) ;}), ', ')",
     ]
+
+
+def test_ydb_types():
+    dialect = YqlDialect()
+
+    query = sa.literal(date(1996, 11, 19))
+    compiled = query.compile(dialect=dialect, compile_kwargs={"literal_binds": True})
+
+    assert str(compiled) == "Date('1996-11-19')"

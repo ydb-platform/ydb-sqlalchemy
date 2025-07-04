@@ -10,7 +10,7 @@ else:
 from sqlalchemy import ARRAY, exc, types
 from sqlalchemy.sql import type_api
 
-from .datetime_types import YqlDateTime, YqlTimestamp  # noqa: F401
+from .datetime_types import YqlDate, YqlDateTime, YqlTimestamp  # noqa: F401
 from .json import YqlJSON  # noqa: F401
 
 
