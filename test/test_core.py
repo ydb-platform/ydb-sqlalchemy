@@ -594,7 +594,7 @@ class TestTransactionIsolationLevel(TestBase):
 
 class TestEngine(TestBase):
     __backend__ = True
-    __only_on__ = "yql+ydb"
+    __only_on__ = "ydb+ydb_sync"
 
     @pytest.fixture(scope="class")
     def ydb_driver(self):
@@ -649,7 +649,7 @@ class TestEngine(TestBase):
 
 
 class TestAsyncEngine(TestEngine):
-    __only_on__ = "yql+ydb_async"
+    __only_on__ = "ydb+ydb_async"
 
     @pytest.fixture(scope="class")
     def ydb_driver(self):

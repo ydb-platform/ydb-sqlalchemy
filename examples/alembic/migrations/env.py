@@ -32,7 +32,7 @@ target_metadata = Base.metadata
 
 
 class YDBImpl(DefaultImpl):
-    __dialect__ = "yql"
+    __dialect__ = "ydb"
 
 
 def run_migrations_offline() -> None:

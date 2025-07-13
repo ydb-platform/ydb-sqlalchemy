@@ -28,7 +28,7 @@ from alembic.ddl.impl import DefaultImpl
 
 
 class YDBImpl(DefaultImpl):
-    __dialect__ = "yql"
+    __dialect__ = "ydb"
 ```
 
 Secondly, since `YDB` do not support updating primary key columns, we have to update alembic table structure.
