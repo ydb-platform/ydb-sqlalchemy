@@ -1,3 +1,5 @@
+* Add opt-in support for YDB's native UUID type via `sa.UUID` or `types.YqlUUID` while keeping `sa.Uuid` stored as `Utf8`
+
 ## 0.1.24 ##
 * Keep `ydb_sqlalchemy.alembic` importable when the optional Alembic dependency is absent
 

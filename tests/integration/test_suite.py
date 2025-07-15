@@ -616,7 +616,6 @@ class ConcatTest(fixtures.TablesTest):
 if not OLD_SA:
     from sqlalchemy.testing.suite.test_types import NativeUUIDTest as _NativeUUIDTest
 
-    @pytest.mark.skip("uuid unsupported for columns")
     class NativeUUIDTest(_NativeUUIDTest):
         pass
 

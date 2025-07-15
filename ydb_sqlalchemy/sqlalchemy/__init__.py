@@ -77,6 +77,7 @@ COLUMN_TYPES = {
     ydb.PrimitiveType.Interval: sa.INTEGER,
     ydb.PrimitiveType.Bool: sa.BOOLEAN,
     ydb.PrimitiveType.DyNumber: sa.TEXT,
+    ydb.PrimitiveType.UUID: types.YqlUUID,
 }
 
 DBAPI_COLUMN_TYPES = {
@@ -198,6 +199,7 @@ class YqlDialect(StrCompileDialect):
         sa.types.LargeBinary: types.Binary,
         sa.types.BLOB: types.Binary,
         sa.types.ARRAY: types.ListType,
+        **({sa.types.UUID: types.YqlUUID} if not OLD_SA else {}),
     }
 
     connection_characteristics = util.immutabledict(

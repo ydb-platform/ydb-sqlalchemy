@@ -1,4 +1,5 @@
 import decimal
+import uuid
 from typing import Any, Mapping, Type, Union
 
 from sqlalchemy import __version__ as sa_version
@@ -13,6 +14,62 @@ from sqlalchemy.sql import type_api
 
 from .datetime_types import YqlDate, YqlDateTime, YqlTimestamp, YqlDate32, YqlTimestamp64, YqlDateTime64  # noqa: F401
 from .json import YqlJSON  # noqa: F401
+
+
+_UUIDBase = getattr(types, "UUID", types.TypeEngine)
+
+
+class YqlUUID(_UUIDBase):
+    """Store UUID values using YDB's native ``Uuid`` type.
+
+    The dialect intentionally keeps SQLAlchemy's generic ``Uuid`` type mapped
+    to ``Utf8`` for backwards compatibility.  This type is the explicit opt-in
+    for native storage and is also used as the dialect implementation of
+    SQLAlchemy 2.x's SQL-native ``UUID`` type.
+    """
+
+    __visit_name__ = "UUID"
+
+    def __init__(self, as_uuid=True):
+        self.as_uuid = as_uuid
+        if hasattr(types, "UUID"):
+            super().__init__(as_uuid=as_uuid)
+        else:
+            super().__init__()
+
+    @property
+    def python_type(self):
+        return uuid.UUID if self.as_uuid else str
+
+    def bind_processor(self, dialect):
+        def process(value):
+            if value is None:
+                return None
+            if isinstance(value, str):
+                value = uuid.UUID(value)
+            return value
+
+        return process
+
+    def result_processor(self, dialect, coltype):
+        def process(value):
+            if value is None:
+                return None
+            if self.as_uuid:
+                return value if isinstance(value, uuid.UUID) else uuid.UUID(value)
+            return str(value)
+
+        return process
+
+    def literal_processor(self, dialect):
+        def process(value):
+            if value is None:
+                return None
+            if not isinstance(value, uuid.UUID):
+                value = uuid.UUID(value)
+            return f'Uuid("{value}")'
+
+        return process
 
 
 class UInt64(types.Integer):
