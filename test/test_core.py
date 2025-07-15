@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import uuid
 from decimal import Decimal
 from typing import NamedTuple
 
@@ -11,6 +12,7 @@ from sqlalchemy.testing.fixtures import TablesTest, TestBase, config
 from ydb._grpc.v4.protos import ydb_common_pb2
 
 from ydb_sqlalchemy import IsolationLevel, dbapi
+
 from ydb_sqlalchemy import sqlalchemy as ydb_sa
 from ydb_sqlalchemy.sqlalchemy import types
 
@@ -238,6 +240,13 @@ class TestTypes(TablesTest):
             Column("date", sa.Date),
             # Column("interval", sa.Interval),
         )
+        Table(
+            "test_uuid_types",
+            metadata,
+            Column("id", Integer, primary_key=True),
+            Column("uuid_native", sa.UUID),
+            Column("uuid_str", sa.Uuid),
+        )
 
     def test_primitive_types(self, connection):
         table = self.tables.test_primitive_types
@@ -309,6 +318,22 @@ class TestTypes(TablesTest):
             timestamp_value_tz.astimezone(datetime.timezone.utc),  # YDB doesn't store timezone, so it is always utc
             today,
         )
+
+    def test_uuid_types(self, connection):
+        table = self.tables.test_uuid_types
+        uuid_value = uuid.uuid4()
+
+        statement = sa.insert(table).values(id=1, uuid_native=uuid_value, uuid_str=uuid_value)
+        connection.execute(statement)
+        row = connection.execute(sa.select(table).where(table.c.id == 1)).fetchone()
+        assert row == (1, uuid_value, uuid_value)
+
+        uuid_value_str = str(uuid_value)
+
+        statement = sa.insert(table).values(id=2, uuid_native=uuid_value_str, uuid_str=uuid_value)
+        connection.execute(statement)
+        row = connection.execute(sa.select(table).where(table.c.id == 2)).fetchone()
+        assert row == (2, uuid_value, uuid_value)
 
 
 class TestWithClause(TablesTest):

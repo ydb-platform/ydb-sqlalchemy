@@ -11,6 +11,7 @@ from .base import (
     BaseYqlIdentifierPreparer,
     BaseYqlTypeCompiler,
 )
+from .. import types
 from typing import Union
 
 
@@ -18,11 +19,20 @@ class YqlTypeCompiler(BaseYqlTypeCompiler):
     def visit_uuid(self, type_: sa.Uuid, **kw):
         return "UTF8"
 
+    def visit_UUID(self, type_: Union[sa.UUID, types.YqlUUID], **kw):
+        return "UUID"
+
     def get_ydb_type(
         self, type_: sa.types.TypeEngine, is_optional: bool
     ) -> Union[ydb.PrimitiveType, ydb.AbstractTypeBuilder]:
         if isinstance(type_, sa.TypeDecorator):
             type_ = type_.impl
+
+        if isinstance(type_, sa.UUID):
+            ydb_type = ydb.PrimitiveType.UUID
+            if is_optional:
+                return ydb.OptionalType(ydb_type)
+            return ydb_type
 
         if isinstance(type_, sa.Uuid):
             ydb_type = ydb.PrimitiveType.Utf8

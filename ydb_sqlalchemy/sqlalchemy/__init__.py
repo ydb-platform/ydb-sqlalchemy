@@ -66,6 +66,7 @@ COLUMN_TYPES = {
     ydb.PrimitiveType.Interval: sa.INTEGER,
     ydb.PrimitiveType.Bool: sa.BOOLEAN,
     ydb.PrimitiveType.DyNumber: sa.TEXT,
+    ydb.PrimitiveType.UUID: sa.UUID,
 }
 
 
@@ -140,6 +141,7 @@ class YqlDialect(StrCompileDialect):
         sa.types.DateTime: types.YqlTimestamp,  # Because YDB's DateTime doesn't store microseconds
         sa.types.DATETIME: types.YqlDateTime,
         sa.types.TIMESTAMP: types.YqlTimestamp,
+        sa.types.UUID: types.YqlUUID,
     }
 
     connection_characteristics = util.immutabledict(

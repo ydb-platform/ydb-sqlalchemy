@@ -14,6 +14,28 @@ from .datetime_types import YqlDate, YqlDateTime, YqlTimestamp  # noqa: F401
 from .json import YqlJSON  # noqa: F401
 
 
+class YqlUUID(types.UUID):
+    __visit_name__ = "UUID"
+
+    def bind_processor(self, dialect):
+        def process(value):
+            if value is None:
+                return None
+            if isinstance(value, str):
+                try:
+                    import uuid as uuid_module
+
+                    value = uuid_module.UUID(value)
+                except ValueError:
+                    raise ValueError(f"Invalid UUID string: {value}")
+            return value
+
+        return process
+
+    def result_processor(self, dialect, coltype):
+        return None
+
+
 class UInt64(types.Integer):
     __visit_name__ = "uint64"
 
