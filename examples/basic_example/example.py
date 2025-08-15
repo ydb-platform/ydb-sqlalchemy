@@ -186,7 +186,7 @@ def run_example_core(engine):
 
 
 def main():
-    engine = sa.create_engine("yql+ydb://localhost:2136/local")
+    engine = sa.create_engine("ydb+ydb_sync://localhost:2136/local")
 
     logging.basicConfig(level=logging.INFO)
     logging.getLogger("_sqlalchemy.engine").setLevel(logging.INFO)
