@@ -2,10 +2,17 @@
 ---
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/ydb-platform/ydb-sqlalchemy/blob/main/LICENSE)
 [![PyPI version](https://badge.fury.io/py/ydb-sqlalchemy.svg)](https://badge.fury.io/py/ydb-sqlalchemy)
+[![API Reference](https://img.shields.io/badge/API-Reference-lightgreen.svg)](https://ydb-platform.github.io/ydb-sqlalchemy/api/index.html)
 [![Functional tests](https://github.com/ydb-platform/ydb-sqlalchemy/actions/workflows/tests.yml/badge.svg)](https://github.com/ydb-platform/ydb-sqlalchemy/actions/workflows/tests.yml)
 [![Style checks](https://github.com/ydb-platform/ydb-sqlalchemy/actions/workflows/style.yml/badge.svg)](https://github.com/ydb-platform/ydb-sqlalchemy/actions/workflows/style.yml)
 
 This repository contains YQL dialect for SqlAlchemy 2.0.
+
+---
+
+**Documentation**: <a href="https://ydb-platform.github.io/ydb-sqlalchemy" target="_blank">https://ydb-platform.github.io/ydb-sqlalchemy</a>
+
+---
 
 **Note**: Dialect also works with SqlAlchemy 1.4, but it is not fully tested.
 
