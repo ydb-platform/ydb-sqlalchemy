@@ -140,6 +140,7 @@ class YqlDialect(StrCompileDialect):
         sa.types.DateTime: types.YqlTimestamp,  # Because YDB's DateTime doesn't store microseconds
         sa.types.DATETIME: types.YqlDateTime,
         sa.types.TIMESTAMP: types.YqlTimestamp,
+        sa.types.DECIMAL: types.Decimal,
     }
 
     connection_characteristics = util.immutabledict(

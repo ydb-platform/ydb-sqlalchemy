@@ -1,3 +1,4 @@
+import decimal
 from typing import Any, Mapping, Type, Union
 
 from sqlalchemy import __version__ as sa_version
@@ -44,6 +45,66 @@ class Int16(types.Integer):
 
 class Int8(types.Integer):
     __visit_name__ = "int8"
+
+
+class Decimal(types.DECIMAL):
+    __visit_name__ = "DECIMAL"
+
+    def __init__(self, precision=None, scale=None, asdecimal=True):
+        # YDB supports Decimal(22,9) by default
+        if precision is None:
+            precision = 22
+        if scale is None:
+            scale = 9
+        super().__init__(precision=precision, scale=scale, asdecimal=asdecimal)
+
+    def bind_processor(self, dialect):
+        def process(value):
+            if value is None:
+                return None
+            # Convert float to Decimal if needed
+            if isinstance(value, float):
+                return decimal.Decimal(str(value))
+            elif isinstance(value, str):
+                return decimal.Decimal(value)
+            elif not isinstance(value, decimal.Decimal):
+                return decimal.Decimal(str(value))
+            return value
+
+        return process
+
+    def result_processor(self, dialect, coltype):
+        def process(value):
+            if value is None:
+                return None
+
+            # YDB always returns Decimal values as decimal.Decimal objects
+            # But if asdecimal=False, we should convert to float
+            if not self.asdecimal:
+                return float(value)
+
+            # For asdecimal=True (default), return as Decimal
+            if not isinstance(value, decimal.Decimal):
+                return decimal.Decimal(str(value))
+            return value
+
+        return process
+
+    def literal_processor(self, dialect):
+        def process(value):
+            # Convert float to Decimal if needed
+            if isinstance(value, float):
+                value = decimal.Decimal(str(value))
+            elif not isinstance(value, decimal.Decimal):
+                value = decimal.Decimal(str(value))
+
+            # Use default precision and scale if not specified
+            precision = self.precision if self.precision is not None else 22
+            scale = self.scale if self.scale is not None else 9
+
+            return f'Decimal("{str(value)}", {precision}, {scale})'
+
+        return process
 
 
 class ListType(ARRAY):
