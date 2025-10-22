@@ -42,6 +42,82 @@ with engine.connect() as conn:
 
 ```
 
+## Authentication
+
+To specify credentials, you should pass `credentials` object to `connect_args` argument of `create_engine` method.
+
+### Static Credentials
+
+To use static credentials you should specify `username` and `password` as follows:
+
+```python3
+engine = sa.create_engine(
+    "yql+ydb://localhost:2136/local",
+    connect_args = {
+        "credentials": {
+            "username": "...",
+            "password": "..."
+        }
+    }
+)
+```
+
+### Token Credentials
+
+To use access token credentials you should specify `token` as follows:
+
+```python3
+engine = sa.create_engine(
+    "yql+ydb://localhost:2136/local",
+    connect_args = {
+        "credentials": {
+            "token": "..."
+        }
+    }
+)
+```
+
+### Service Account Credentials
+
+To use service account credentials you should specify `service_account_json` as follows:
+
+```python3
+engine = sa.create_engine(
+    "yql+ydb://localhost:2136/local",
+    connect_args = {
+        "credentials": {
+            "service_account_json": {
+                "id": "...",
+                "service_account_id": "...",
+                "created_at": "...",
+                "key_algorithm": "...",
+                "public_key": "...",
+                "private_key": "..."
+            }
+        }
+    }
+)
+```
+
+### Credentials from YDB SDK
+
+To use any credentials that comes with `ydb` package, just pass credentials object as follows:
+
+```python3
+import ydb.iam
+
+engine = sa.create_engine(
+    "yql+ydb://localhost:2136/local",
+    connect_args = {
+        "credentials": ydb.iam.MetadataUrlCredentials()
+    }
+)
+
+```
+
+
+## Migrations
+
 To setup `alembic` to work with `YDB` please check [this example](https://github.com/ydb-platform/ydb-sqlalchemy/tree/main/examples/alembic).
 
 ## Development
@@ -82,3 +158,14 @@ $ source venv/bin/activate
 $ pip install -r requirements.txt
 $ python examples/example.py
 ```
+
+## Additional Notes
+
+### Pandas
+It is possible to use YDB SA engine with `pandas` fuctions [to_sql()](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.to_sql.html) and [read_sql](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.read_sql.html). However, there are some limitations:
+
+* `to_sql` method can not be used with column tables, since it is impossible to specify `NOT NULL` columns with current `to_sql` arguments. YDB requires column tables to have `NOT NULL` attribute on `PK` columns.
+
+* `to_sql` is not fully optimized to load huge datasets. It is recommended to use `method="multi"` and avoid setting a very large `chunksize`.
+
+* `read_sql` is not fully optimized to load huge datasets and could lead to significant memory consumptions.
