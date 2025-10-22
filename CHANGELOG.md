@@ -1,3 +1,4 @@
+## 0.1.10 ##
 * YDB Decimal support
 
 ## 0.1.9 ##
