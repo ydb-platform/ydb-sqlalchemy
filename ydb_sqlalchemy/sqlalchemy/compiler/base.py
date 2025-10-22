@@ -113,8 +113,12 @@ class BaseYqlTypeCompiler(StrSQLTypeCompiler):
         return "Int64"
 
     def visit_NUMERIC(self, type_: sa.Numeric, **kw):
-        """Only Decimal(22,9) is supported for table columns"""
         return f"Decimal({type_.precision}, {type_.scale})"
+
+    def visit_DECIMAL(self, type_: sa.DECIMAL, **kw):
+        precision = getattr(type_, "precision", None) or 22
+        scale = getattr(type_, "scale", None) or 9
+        return f"Decimal({precision}, {scale})"
 
     def visit_BINARY(self, type_: sa.BINARY, **kw):
         return "String"
@@ -204,7 +208,9 @@ class BaseYqlTypeCompiler(StrSQLTypeCompiler):
         elif isinstance(type_, sa.Boolean):
             ydb_type = ydb.PrimitiveType.Bool
         elif isinstance(type_, sa.Numeric):
-            ydb_type = ydb.DecimalType(type_.precision, type_.scale)
+            precision = getattr(type_, "precision", None) or 22
+            scale = getattr(type_, "scale", None) or 9
+            ydb_type = ydb.DecimalType(precision, scale)
         elif isinstance(type_, (types.ListType, sa.ARRAY)):
             ydb_type = ydb.ListType(self.get_ydb_type(type_.item_type, is_optional=False))
         elif isinstance(type_, types.StructType):
