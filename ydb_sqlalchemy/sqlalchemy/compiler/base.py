@@ -135,6 +135,15 @@ class BaseYqlTypeCompiler(StrSQLTypeCompiler):
     def visit_TIMESTAMP(self, type_: sa.TIMESTAMP, **kw):
         return "Timestamp"
 
+    def visit_date32(self, type_: types.YqlDate32, **kw):
+        return "Date32"
+
+    def visit_timestamp64(self, type_: types.YqlTimestamp64, **kw):
+        return "Timestamp64"
+
+    def visit_datetime64(self, type_: types.YqlDateTime64, **kw):
+        return "DateTime64"
+
     def visit_list_type(self, type_: types.ListType, **kw):
         inner = self.process(type_.item_type, **kw)
         return f"List<{inner}>"
@@ -193,6 +202,12 @@ class BaseYqlTypeCompiler(StrSQLTypeCompiler):
         elif isinstance(type_, types.YqlJSON.YqlJSONPathType):
             ydb_type = ydb.PrimitiveType.Utf8
         # Json
+        elif isinstance(type_, types.YqlDate32):
+            ydb_type = ydb.PrimitiveType.Date32
+        elif isinstance(type_, types.YqlTimestamp64):
+            ydb_type = ydb.PrimitiveType.Timestamp64
+        elif isinstance(type_, types.YqlDateTime64):
+            ydb_type = ydb.PrimitiveType.Datetime64
         elif isinstance(type_, sa.DATETIME):
             ydb_type = ydb.PrimitiveType.Datetime
         elif isinstance(type_, sa.TIMESTAMP):

@@ -12,97 +12,134 @@ For more information about YDB data types, see the `YDB Type System Documentatio
 Type Mapping Summary
 --------------------
 
-The following table shows the complete mapping between YDB native types, SQLAlchemy types, and Python types:
+The following table shows the complete mapping between YDB native types, YDB SQLAlchemy types, standard SQLAlchemy types, and Python types:
 
 .. list-table:: YDB Type System Reference
    :header-rows: 1
-   :widths: 20 25 20 35
+   :widths: 15 20 20 15 30
 
    * - YDB Native Type
-     - SQLAlchemy Type
+     - YDB SA Type
+     - SA Type
      - Python Type
      - Notes
    * - ``Bool``
-     - ``BOOLEAN``
+     -
+     - ``Boolean``
      - ``bool``
      -
    * - ``Int8``
+     - :class:`~ydb_sqlalchemy.sqlalchemy.types.Int8`
      -
      - ``int``
      - -2^7 to 2^7-1
    * - ``Int16``
+     - :class:`~ydb_sqlalchemy.sqlalchemy.types.Int16`
      -
      - ``int``
      - -2^15 to 2^15-1
    * - ``Int32``
+     - :class:`~ydb_sqlalchemy.sqlalchemy.types.Int32`
      -
      - ``int``
      - -2^31 to 2^31-1
    * - ``Int64``
-     - ``INTEGER``
+     - :class:`~ydb_sqlalchemy.sqlalchemy.types.Int64`
+     - ``Integer``
      - ``int``
-     - -2^63 to 2^63-1
+     - -2^63 to 2^63-1, default integer type
    * - ``Uint8``
+     - :class:`~ydb_sqlalchemy.sqlalchemy.types.UInt8`
      -
      - ``int``
      - 0 to 2^8-1
    * - ``Uint16``
+     - :class:`~ydb_sqlalchemy.sqlalchemy.types.UInt16`
      -
      - ``int``
      - 0 to 2^16-1
    * - ``Uint32``
+     - :class:`~ydb_sqlalchemy.sqlalchemy.types.UInt32`
      -
      - ``int``
      - 0 to 2^32-1
    * - ``Uint64``
+     - :class:`~ydb_sqlalchemy.sqlalchemy.types.UInt64`
      -
      - ``int``
      - 0 to 2^64-1
    * - ``Float``
-     - ``FLOAT``
+     -
+     - ``Float``
      - ``float``
      -
    * - ``Double``
+     -
      - ``Double``
      - ``float``
      - Available in SQLAlchemy 2.0+
    * - ``Decimal(p,s)``
-     - ``DECIMAL`` / ``NUMERIC``
+     - :class:`~ydb_sqlalchemy.sqlalchemy.types.Decimal`
+     - ``DECIMAL``
      - ``decimal.Decimal``
      -
    * - ``String``
-     - ``BINARY`` / ``BLOB``
-     - ``str`` / ``bytes``
+     -
+     - ``BINARY``
+     - ``bytes``
      -
    * - ``Utf8``
-     - ``CHAR`` / ``VARCHAR`` / ``TEXT`` / ``NVARCHAR``
+     -
+     - ``String`` / ``Text``
      - ``str``
      -
    * - ``Date``
+     - :class:`~ydb_sqlalchemy.sqlalchemy.datetime_types.YqlDate`
      - ``Date``
      - ``datetime.date``
      -
+   * - ``Date32``
+     - :class:`~ydb_sqlalchemy.sqlalchemy.datetime_types.YqlDate32`
+     -
+     - ``datetime.date``
+     - Extended date range support
    * - ``Datetime``
+     - :class:`~ydb_sqlalchemy.sqlalchemy.datetime_types.YqlDateTime`
      - ``DATETIME``
      - ``datetime.datetime``
      -
+   * - ``Datetime64``
+     - :class:`~ydb_sqlalchemy.sqlalchemy.datetime_types.YqlDateTime64`
+     -
+     - ``datetime.datetime``
+     - Extended datetime range
    * - ``Timestamp``
+     - :class:`~ydb_sqlalchemy.sqlalchemy.datetime_types.YqlTimestamp`
      - ``TIMESTAMP``
      - ``datetime.datetime``
      -
+   * - ``Timestamp64``
+     - :class:`~ydb_sqlalchemy.sqlalchemy.datetime_types.YqlTimestamp64`
+     -
+     - ``datetime.datetime``
+     - Extended timestamp range
    * - ``Json``
+     - :class:`~ydb_sqlalchemy.sqlalchemy.json.YqlJSON`
      - ``JSON``
      - ``dict`` / ``list``
      -
    * - ``List<T>``
+     - :class:`~ydb_sqlalchemy.sqlalchemy.types.ListType`
      - ``ARRAY``
      - ``list``
      -
    * - ``Struct<...>``
+     - :class:`~ydb_sqlalchemy.sqlalchemy.types.StructType`
      -
      - ``dict``
      -
    * - ``Optional<T>``
+     -
      - ``nullable=True``
      - ``None`` + base type
      -
@@ -145,6 +182,10 @@ YDB provides specific integer types with defined bit widths:
        byte_value = Column(UInt8)             # Unsigned 8-bit integer (0-255)
        counter = Column(UInt32)               # Unsigned 32-bit integer
 
+For detailed API reference, see:
+:class:`~ydb_sqlalchemy.sqlalchemy.types.Int8`, :class:`~ydb_sqlalchemy.sqlalchemy.types.Int16`, :class:`~ydb_sqlalchemy.sqlalchemy.types.Int32`, :class:`~ydb_sqlalchemy.sqlalchemy.types.Int64`,
+:class:`~ydb_sqlalchemy.sqlalchemy.types.UInt8`, :class:`~ydb_sqlalchemy.sqlalchemy.types.UInt16`, :class:`~ydb_sqlalchemy.sqlalchemy.types.UInt32`, :class:`~ydb_sqlalchemy.sqlalchemy.types.UInt64`.
+
 Decimal Type
 ------------
 
@@ -176,6 +217,8 @@ YDB supports high-precision decimal numbers:
        percentage=99.99
    ))
 
+For detailed API reference, see: :class:`~ydb_sqlalchemy.sqlalchemy.types.Decimal`.
+
 Date and Time Types
 -------------------
 
@@ -183,7 +226,10 @@ YDB provides several date and time types:
 
 .. code-block:: python
 
-   from ydb_sqlalchemy.sqlalchemy.types import YqlDate, YqlDateTime, YqlTimestamp
+   from ydb_sqlalchemy.sqlalchemy.types import (
+       YqlDate, YqlDateTime, YqlTimestamp,
+       YqlDate32, YqlDateTime64, YqlTimestamp64
+   )
    from sqlalchemy import DateTime
    import datetime
 
@@ -192,14 +238,23 @@ YDB provides several date and time types:
 
        id = Column(UInt64, primary_key=True)
 
-       # Date only (YYYY-MM-DD)
+       # Date only (YYYY-MM-DD) - standard range
        event_date = Column(YqlDate)
 
-       # DateTime with timezone support
+       # Date32 - extended date range support
+       extended_date = Column(YqlDate32)
+
+       # DateTime with timezone support - standard range
        created_at = Column(YqlDateTime(timezone=True))
 
-       # Timestamp (high precision)
+       # DateTime64 - extended range
+       precise_datetime = Column(YqlDateTime64(timezone=True))
+
+       # Timestamp (high precision) - standard range
        precise_time = Column(YqlTimestamp)
+
+       # Timestamp64 - extended range with microsecond precision
+       extended_timestamp = Column(YqlTimestamp64)
 
        # Standard SQLAlchemy DateTime also works
        updated_at = Column(DateTime)
@@ -211,7 +266,14 @@ YDB provides several date and time types:
    session.add(EventLog(
        id=1,
        event_date=today,
+       extended_date=today,
        created_at=now,
+       precise_datetime=now,
        precise_time=now,
+       extended_timestamp=now,
        updated_at=now
    ))
+
+For detailed API reference, see:
+:class:`~ydb_sqlalchemy.sqlalchemy.datetime_types.YqlDate`, :class:`~ydb_sqlalchemy.sqlalchemy.datetime_types.YqlDateTime`, :class:`~ydb_sqlalchemy.sqlalchemy.datetime_types.YqlTimestamp`,
+:class:`~ydb_sqlalchemy.sqlalchemy.datetime_types.YqlDate32`, :class:`~ydb_sqlalchemy.sqlalchemy.datetime_types.YqlDateTime64`, :class:`~ydb_sqlalchemy.sqlalchemy.datetime_types.YqlTimestamp64`.
