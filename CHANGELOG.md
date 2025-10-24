@@ -1,3 +1,5 @@
+* Date32, Datetime64 and Timestamp64 support
+
 ## 0.1.10 ##
 * YDB Decimal support
 
