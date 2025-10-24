@@ -36,3 +36,39 @@ class YqlDateTime(YqlTimestamp, sqltypes.DATETIME):
             return int(value.timestamp())
 
         return process
+
+
+class YqlDate32(YqlDate):
+    __visit_name__ = "date32"
+
+    def literal_processor(self, dialect):
+        parent = super().literal_processor(dialect)
+
+        def process(value):
+            return f"Date32({parent(value)})"
+
+        return process
+
+
+class YqlTimestamp64(YqlTimestamp):
+    __visit_name__ = "timestamp64"
+
+    def literal_processor(self, dialect):
+        parent = super().literal_processor(dialect)
+
+        def process(value):
+            return f"Timestamp64({parent(value)})"
+
+        return process
+
+
+class YqlDateTime64(YqlDateTime):
+    __visit_name__ = "datetime64"
+
+    def literal_processor(self, dialect):
+        parent = super().literal_processor(dialect)
+
+        def process(value):
+            return f"DateTime64({parent(value)})"
+
+        return process

@@ -1,4 +1,5 @@
 import ctypes
+import datetime
 import decimal
 
 import pytest
@@ -424,6 +425,16 @@ class DateTest(_DateTest):
     run_dispose_bind = "once"
 
 
+class Date32Test(_DateTest):
+    run_dispose_bind = "once"
+    datatype = ydb_sa_types.YqlDate32
+    data = datetime.date(1969, 1, 1)
+
+    @pytest.mark.skip("Default binding for DATE is not compatible with Date32")
+    def test_select_direct(self, connection):
+        pass
+
+
 class DateTimeMicrosecondsTest(_DateTimeMicrosecondsTest):
     run_dispose_bind = "once"
 
@@ -432,8 +443,28 @@ class DateTimeTest(_DateTimeTest):
     run_dispose_bind = "once"
 
 
+class DateTime64Test(_DateTimeTest):
+    datatype = ydb_sa_types.YqlDateTime64
+    data = datetime.datetime(1969, 10, 15, 12, 57, 18)
+    run_dispose_bind = "once"
+
+    @pytest.mark.skip("Default binding for DATETIME is not compatible with DateTime64")
+    def test_select_direct(self, connection):
+        pass
+
+
 class TimestampMicrosecondsTest(_TimestampMicrosecondsTest):
     run_dispose_bind = "once"
+
+
+class Timestamp64MicrosecondsTest(_TimestampMicrosecondsTest):
+    run_dispose_bind = "once"
+    datatype = ydb_sa_types.YqlTimestamp64
+    data = datetime.datetime(1969, 10, 15, 12, 57, 18, 396)
+
+    @pytest.mark.skip("Default binding for TIMESTAMP is not compatible with Timestamp64")
+    def test_select_direct(self, connection):
+        pass
 
 
 @pytest.mark.skip("unsupported Time data type")
