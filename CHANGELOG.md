@@ -1,3 +1,4 @@
+## 0.1.12 ##
 * Fix sa 2.0.44 compatibility
 
 ## 0.1.11 ##
