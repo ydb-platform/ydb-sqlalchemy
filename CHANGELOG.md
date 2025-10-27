@@ -1,3 +1,5 @@
+* Fix sa 2.0.44 compatibility
+
 ## 0.1.11 ##
 * Date32, Datetime64 and Timestamp64 support
 
