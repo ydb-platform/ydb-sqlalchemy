@@ -66,7 +66,10 @@ class AdaptedAsyncConnection(AdaptedConnection):
         return await_only(self._connection.get_table_names())
 
 
+# TODO(vgvoleg): Migrate to AsyncAdapt_dbapi_cursor and AsyncAdapt_dbapi_connection
 class AdaptedAsyncCursor:
+    _awaitable_cursor_close: bool = False
+
     def __init__(self, cursor: AsyncCursor):
         self._cursor = cursor
 
@@ -111,4 +114,7 @@ class AdaptedAsyncCursor:
         pass
 
     def setoutputsizes(self, *args):
+        pass
+
+    async def _async_soft_close(self) -> None:
         pass
