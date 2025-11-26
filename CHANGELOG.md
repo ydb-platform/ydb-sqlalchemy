@@ -1,3 +1,5 @@
+* Add TupleType mapping support for YDB
+
 ## 0.1.12 ##
 * Fix sa 2.0.44 compatibility
 
