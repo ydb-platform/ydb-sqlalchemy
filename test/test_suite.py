@@ -577,6 +577,19 @@ class ContainerTypesTest(fixtures.TablesTest):
 
         eq_(connection.execute(sa.select(table)).fetchall(), [(1,), (2,), (3,)])
 
+    def test_tuple_list_type_bind_variable_text(self, connection):
+        table = self.tables.container_types_test
+
+        connection.execute(sa.insert(table).values([{"id": 1}, {"id": 2}, {"id": 3}]))
+
+        stmt = select(table.c.id).where(
+            sa.text("(id, id) IN :tuple_arr_var").bindparams(
+                sa.bindparam("tuple_arr_var", type_=sa.ARRAY(sa.TupleType(sa.Integer, sa.Integer))),
+            )
+        )
+
+        eq_(connection.execute(stmt, {"tuple_arr_var": [(1, 1), (2, 2)]}).fetchall(), [(1,), (2,)])
+
 
 class ConcatTest(fixtures.TablesTest):
     @classmethod
