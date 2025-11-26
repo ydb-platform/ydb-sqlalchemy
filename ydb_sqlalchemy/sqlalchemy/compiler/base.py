@@ -228,6 +228,10 @@ class BaseYqlTypeCompiler(StrSQLTypeCompiler):
             ydb_type = ydb.DecimalType(precision, scale)
         elif isinstance(type_, (types.ListType, sa.ARRAY)):
             ydb_type = ydb.ListType(self.get_ydb_type(type_.item_type, is_optional=False))
+        elif isinstance(type_, sa.TupleType):
+            ydb_type = ydb.TupleType()
+            for item_type in type_.types:
+                ydb_type.add_element(self.get_ydb_type(item_type, is_optional=False))
         elif isinstance(type_, types.StructType):
             ydb_type = ydb.StructType()
             for field, field_type in type_.fields_types.items():
