@@ -99,6 +99,19 @@ class YdbRequestSettingsCharacteristic(characteristics.ConnectionCharacteristic)
         return dialect.get_ydb_request_settings(dbapi_connection)
 
 
+class YdbRetrySettingsCharacteristic(characteristics.ConnectionCharacteristic):
+    def reset_characteristic(self, dialect: "YqlDialect", dbapi_connection: ydb_dbapi.Connection) -> None:
+        dialect.reset_ydb_retry_settings(dbapi_connection)
+
+    def set_characteristic(
+        self, dialect: "YqlDialect", dbapi_connection: ydb_dbapi.Connection, value: ydb.RetrySettings
+    ) -> None:
+        dialect.set_ydb_retry_settings(dbapi_connection, value)
+
+    def get_characteristic(self, dialect: "YqlDialect", dbapi_connection: ydb_dbapi.Connection) -> ydb.RetrySettings:
+        return dialect.get_ydb_retry_settings(dbapi_connection)
+
+
 class YqlDialect(StrCompileDialect):
     name = "yql"
     driver = "ydb"
@@ -150,6 +163,7 @@ class YqlDialect(StrCompileDialect):
         {
             "isolation_level": characteristics.IsolationLevelCharacteristic(),
             "ydb_request_settings": YdbRequestSettingsCharacteristic(),
+            "ydb_retry_settings": YdbRetrySettingsCharacteristic(),
         }
     )
 
@@ -311,6 +325,19 @@ class YqlDialect(StrCompileDialect):
 
     def get_ydb_request_settings(self, dbapi_connection: ydb_dbapi.Connection) -> ydb.BaseRequestSettings:
         return dbapi_connection.get_ydb_request_settings()
+
+    def set_ydb_retry_settings(
+        self,
+        dbapi_connection: ydb_dbapi.Connection,
+        value: ydb.RetrySettings,
+    ) -> None:
+        dbapi_connection.set_ydb_retry_settings(value)
+
+    def reset_ydb_retry_settings(self, dbapi_connection: ydb_dbapi.Connection):
+        self.set_ydb_retry_settings(dbapi_connection, ydb.RetrySettings())
+
+    def get_ydb_retry_settings(self, dbapi_connection: ydb_dbapi.Connection) -> ydb.RetrySettings:
+        return dbapi_connection.get_ydb_retry_settings()
 
     def create_connect_args(self, url):
         args, kwargs = super().create_connect_args(url)

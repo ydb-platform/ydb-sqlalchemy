@@ -56,6 +56,12 @@ class AdaptedAsyncConnection(AdaptedConnection):
     def get_ydb_request_settings(self) -> ydb.BaseRequestSettings:
         return self._connection.get_ydb_request_settings()
 
+    def set_ydb_retry_settings(self, value: ydb.RetrySettings) -> None:
+        self._connection.set_ydb_retry_settings(value)
+
+    def get_ydb_retry_settings(self) -> ydb.RetrySettings:
+        return self._connection.get_ydb_retry_settings()
+
     def describe(self, table_path: str):
         return await_only(self._connection.describe(table_path))
 
