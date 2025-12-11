@@ -1,3 +1,4 @@
+## 0.1.14 ##
 * Add ability to propagate RetrySettings
 
 ## 0.1.13 ##
