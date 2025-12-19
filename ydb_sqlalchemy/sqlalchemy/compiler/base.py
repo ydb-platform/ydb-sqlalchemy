@@ -216,7 +216,7 @@ class BaseYqlTypeCompiler(StrSQLTypeCompiler):
             ydb_type = ydb.PrimitiveType.Timestamp
         elif isinstance(type_, sa.Date):
             ydb_type = ydb.PrimitiveType.Date
-        elif isinstance(type_, sa.BINARY):
+        elif isinstance(type_, (sa.BINARY, sa.LargeBinary, types.Binary)):
             ydb_type = ydb.PrimitiveType.String
         elif isinstance(type_, sa.Float):
             ydb_type = ydb.PrimitiveType.Float

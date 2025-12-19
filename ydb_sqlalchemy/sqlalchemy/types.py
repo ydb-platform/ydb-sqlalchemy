@@ -11,7 +11,14 @@ else:
 from sqlalchemy import ARRAY, exc, types
 from sqlalchemy.sql import type_api
 
-from .datetime_types import YqlDate, YqlDateTime, YqlTimestamp, YqlDate32, YqlTimestamp64, YqlDateTime64  # noqa: F401
+from .datetime_types import (
+    YqlDate,
+    YqlDateTime,
+    YqlTimestamp,
+    YqlDate32,
+    YqlTimestamp64,
+    YqlDateTime64,
+)  # noqa: F401
 from .json import YqlJSON  # noqa: F401
 
 
@@ -119,7 +126,10 @@ class HashableDict(dict):
 class StructType(types.TypeEngine[Mapping[str, Any]]):
     __visit_name__ = "struct_type"
 
-    def __init__(self, fields_types: Mapping[str, Union[Type[types.TypeEngine], Type[types.TypeDecorator]]]):
+    def __init__(
+        self,
+        fields_types: Mapping[str, Union[Type[types.TypeEngine], Type[types.TypeDecorator]]],
+    ):
         self.fields_types = HashableDict(dict(sorted(fields_types.items())))
 
     @property
@@ -139,3 +149,10 @@ class Lambda(ColumnElement):
 
         self.type = type_api.NULLTYPE
         self.func = func
+
+
+class Binary(types.LargeBinary):
+    __visit_name__ = "BINARY"
+
+    def bind_processor(self, dialect):
+        return None
