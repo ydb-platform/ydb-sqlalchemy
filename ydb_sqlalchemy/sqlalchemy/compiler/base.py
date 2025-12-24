@@ -12,6 +12,7 @@ from sqlalchemy.sql.compiler import (
     StrSQLTypeCompiler,
     selectable,
 )
+from sqlalchemy.sql.type_api import to_instance
 from typing import (
     Any,
     Dict,
@@ -153,20 +154,16 @@ class BaseYqlTypeCompiler(StrSQLTypeCompiler):
         return f"List<{inner}>"
 
     def visit_optional(self, type_: types.Optional, **kw):
-        el = type_.element_type
-        if isinstance(el, type):
-            el = el()
+        el = to_instance(type_.element_type)
         inner = self.process(el, **kw)
         return f"Optional<{inner}>"
 
     def visit_struct_type(self, type_: types.StructType, **kw):
-        text = "Struct<"
+        rendered_types = []
         for field, field_type in type_.fields_types.items():
             type_str = self.process(field_type, **kw)
-            text += f"{field}:{type_str},"
-        if text.endswith(","):
-            text = text[:-1]
-        return text + ">"
+            rendered_types.append(f"{field}:{type_str}")
+        return f"Struct<{','.join(rendered_types)}>"
 
     def get_ydb_type(
         self, type_: sa.types.TypeEngine, is_optional: bool
@@ -178,10 +175,7 @@ class BaseYqlTypeCompiler(StrSQLTypeCompiler):
             ydb_type = ydb.PrimitiveType.Utf8
 
         elif isinstance(type_, types.Optional):
-            if isinstance(type_.element_type, type):
-                inner = type_.element_type()
-            else:
-                inner = type_.element_type
+            inner = to_instance(type_.element_type)
             return self.get_ydb_type(inner, is_optional=True)
 
         # Integers
