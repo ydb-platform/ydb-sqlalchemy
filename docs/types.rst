@@ -186,6 +186,27 @@ For detailed API reference, see:
 :class:`~ydb_sqlalchemy.sqlalchemy.types.Int8`, :class:`~ydb_sqlalchemy.sqlalchemy.types.Int16`, :class:`~ydb_sqlalchemy.sqlalchemy.types.Int32`, :class:`~ydb_sqlalchemy.sqlalchemy.types.Int64`,
 :class:`~ydb_sqlalchemy.sqlalchemy.types.UInt8`, :class:`~ydb_sqlalchemy.sqlalchemy.types.UInt16`, :class:`~ydb_sqlalchemy.sqlalchemy.types.UInt32`, :class:`~ydb_sqlalchemy.sqlalchemy.types.UInt64`.
 
+Binary Type
+-----------
+
+YDB maps standard SQLAlchemy ``BINARY`` (or ``LargeBinary``) type to its ``String`` type, which supports storing raw bytes.
+
+.. code-block:: python
+
+   from sqlalchemy import LargeBinary
+
+   class BinaryData(Base):
+       __tablename__ = 'binary_data'
+
+       id = Column(UInt64, primary_key=True)
+       data = Column(LargeBinary)
+
+   # Usage
+   session.add(BinaryData(
+       id=1,
+       data=b'raw bytes data \x00\x01'
+   ))
+
 Decimal Type
 ------------
 
