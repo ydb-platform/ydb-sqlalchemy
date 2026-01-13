@@ -136,7 +136,15 @@ class StructType(types.TypeEngine[Mapping[str, Any]]):
         self.fields_types = HashableDict(dict(sorted(fields_types.items())))
 
     @classmethod
-    def from_table(cls, table: Table):
+    def from_table(cls, table: Table) -> "StructType":
+        """
+        Create a StructType definition from a SQLAlchemy Table.
+
+        Automatically wraps nullable columns in Optional.
+
+        :param table: SQLAlchemy Table object
+        :return: StructType instance
+        """
         fields = {}
         for col in table.columns:
             t = col.type
