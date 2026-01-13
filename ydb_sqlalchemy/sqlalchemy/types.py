@@ -117,6 +117,12 @@ class HashableDict(dict):
 
 
 class Optional(types.TypeEngine):
+    """
+    Wrapper for YDB Optional type.
+
+    Used primarily within StructType to denote nullable fields.
+    """
+
     __visit_name__ = "optional"
 
     def __init__(self, element_type: Union[Type[types.TypeEngine], types.TypeEngine]):
@@ -124,6 +130,12 @@ class Optional(types.TypeEngine):
 
 
 class StructType(types.TypeEngine[Mapping[str, Any]]):
+    """
+    YDB Struct type.
+
+    Represents a structured data type with named fields, mapped to a Python dictionary.
+    """
+
     __visit_name__ = "struct_type"
 
     def __init__(
