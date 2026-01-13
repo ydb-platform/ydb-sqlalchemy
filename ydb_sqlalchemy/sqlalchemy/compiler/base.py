@@ -246,10 +246,7 @@ class BaseYqlTypeCompiler(StrSQLTypeCompiler):
         elif isinstance(type_, types.StructType):
             ydb_type = ydb.StructType()
             for field, field_type in type_.fields_types.items():
-                if isinstance(field_type, type):
-                    inner_type = field_type()
-                else:
-                    inner_type = field_type
+                inner_type = to_instance(field_type)
                 ydb_type.add_member(field, self.get_ydb_type(inner_type, is_optional=False))
         else:
             raise NotSupportedError(f"{type_} bind variables not supported")
