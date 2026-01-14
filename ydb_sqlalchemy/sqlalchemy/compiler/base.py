@@ -25,6 +25,12 @@ from typing import (
     Union,
 )
 
+try:
+    from sqlalchemy.types import _Binary as _BinaryType
+except ImportError:
+    # For older sqlalchemy versions
+    from sqlalchemy.sql.sqltypes import _Binary as _BinaryType
+
 
 from .. import types
 
@@ -227,7 +233,7 @@ class BaseYqlTypeCompiler(StrSQLTypeCompiler):
             ydb_type = ydb.PrimitiveType.Timestamp
         elif isinstance(type_, sa.Date):
             ydb_type = ydb.PrimitiveType.Date
-        elif isinstance(type_, sa.BINARY):
+        elif isinstance(type_, _BinaryType):
             ydb_type = ydb.PrimitiveType.String
         elif isinstance(type_, sa.Float):
             ydb_type = ydb.PrimitiveType.Float

@@ -183,3 +183,10 @@ class Lambda(ColumnElement):
 
         self.type = type_api.NULLTYPE
         self.func = func
+
+
+class Binary(types.LargeBinary):
+    __visit_name__ = "BINARY"
+
+    def bind_processor(self, dialect):
+        return None

@@ -157,6 +157,9 @@ class YqlDialect(StrCompileDialect):
         sa.types.DATETIME: types.YqlDateTime,
         sa.types.TIMESTAMP: types.YqlTimestamp,
         sa.types.DECIMAL: types.Decimal,
+        sa.types.BINARY: types.Binary,
+        sa.types.LargeBinary: types.Binary,
+        sa.types.BLOB: types.Binary,
     }
 
     connection_characteristics = util.immutabledict(

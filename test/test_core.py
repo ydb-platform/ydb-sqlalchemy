@@ -229,6 +229,15 @@ class TestTypes(TablesTest):
             Column("bool", sa.Boolean),
         )
         Table(
+            "test_all_binary_types",
+            metadata,
+            Column("id", sa.Integer, primary_key=True),
+            Column("bin", sa.BINARY),
+            Column("large_bin", sa.LargeBinary),
+            Column("blob", sa.BLOB),
+            Column("custom_bin", types.Binary),
+        )
+        Table(
             "test_datetime_types",
             metadata,
             Column("datetime", sa.DATETIME, primary_key=True),
@@ -254,6 +263,21 @@ class TestTypes(TablesTest):
 
         row = connection.execute(sa.select(table)).fetchone()
         assert row == (42, "Hello World!", 3.5, True)
+
+    def test_all_binary_types(self, connection):
+        table = self.tables.test_all_binary_types
+        data = {
+            "id": 1,
+            "bin": b"binary",
+            "large_bin": b"large_binary",
+            "blob": b"blob",
+            "custom_bin": b"custom_binary",
+        }
+        statement = sa.insert(table).values(**data)
+        connection.execute(statement)
+
+        row = connection.execute(sa.select(table)).fetchone()
+        assert row == (1, b"binary", b"large_binary", b"blob", b"custom_binary")
 
     def test_integer_types(self, connection):
         stmt = sa.select(
