@@ -8,7 +8,7 @@ if sa_version.startswith("2."):
 else:
     from sqlalchemy.sql.expression import ColumnElement
 
-from sqlalchemy import ARRAY, exc, types
+from sqlalchemy import ARRAY, exc, Table, types
 from sqlalchemy.sql import type_api
 
 from .datetime_types import YqlDate, YqlDateTime, YqlTimestamp, YqlDate32, YqlTimestamp64, YqlDateTime64  # noqa: F401
@@ -116,11 +116,55 @@ class HashableDict(dict):
         return hash(tuple(self.items()))
 
 
+class Optional(types.TypeEngine):
+    """
+    Wrapper for YDB Optional type.
+
+    Used primarily within StructType to denote nullable fields.
+    """
+
+    __visit_name__ = "optional"
+
+    def __init__(self, element_type: Union[Type[types.TypeEngine], types.TypeEngine]):
+        self.element_type = element_type
+
+
 class StructType(types.TypeEngine[Mapping[str, Any]]):
+    """
+    YDB Struct type.
+
+    Represents a structured data type with named fields, mapped to a Python dictionary.
+    """
+
     __visit_name__ = "struct_type"
 
-    def __init__(self, fields_types: Mapping[str, Union[Type[types.TypeEngine], Type[types.TypeDecorator]]]):
+    def __init__(
+        self,
+        fields_types: Mapping[
+            str,
+            Union[Type[types.TypeEngine], types.TypeEngine, Optional],
+        ],
+    ):
         self.fields_types = HashableDict(dict(sorted(fields_types.items())))
+
+    @classmethod
+    def from_table(cls, table: Table) -> "StructType":
+        """
+        Create a StructType definition from a SQLAlchemy Table.
+
+        Automatically wraps nullable columns in Optional.
+
+        :param table: SQLAlchemy Table object
+        :return: StructType instance
+        """
+        fields = {}
+        for col in table.columns:
+            t = col.type
+            if col.nullable:
+                fields[col.name] = Optional(t)
+            else:
+                fields[col.name] = t
+        return cls(fields)
 
     @property
     def python_type(self):

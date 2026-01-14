@@ -298,3 +298,74 @@ YDB provides several date and time types:
 For detailed API reference, see:
 :class:`~ydb_sqlalchemy.sqlalchemy.datetime_types.YqlDate`, :class:`~ydb_sqlalchemy.sqlalchemy.datetime_types.YqlDateTime`, :class:`~ydb_sqlalchemy.sqlalchemy.datetime_types.YqlTimestamp`,
 :class:`~ydb_sqlalchemy.sqlalchemy.datetime_types.YqlDate32`, :class:`~ydb_sqlalchemy.sqlalchemy.datetime_types.YqlDateTime64`, :class:`~ydb_sqlalchemy.sqlalchemy.datetime_types.YqlTimestamp64`.
+
+Struct Type
+-----------
+
+YDB supports structured data types via :class:`~ydb_sqlalchemy.sqlalchemy.types.StructType`. This type maps to a Python dictionary.
+
+The ``StructType`` allows defining complex nested structures and is often used with ``AS_TABLE`` for bulk operations.
+
+It supports nullable fields using the :class:`~ydb_sqlalchemy.sqlalchemy.types.Optional` wrapper.
+
+You can create a ``StructType`` manually or generate it from an existing SQLAlchemy Table using the helper method :meth:`~ydb_sqlalchemy.sqlalchemy.types.StructType.from_table`.
+
+.. code-block:: python
+
+   from ydb_sqlalchemy.sqlalchemy.types import StructType, Optional, Int32, UInt64, Utf8
+
+   # 1. Manual StructType definition
+   # Represents a structure: Struct<id: Int32, name: Utf8, data: Optional<Utf8>>
+   my_struct = StructType({
+       "id": Int32,
+       "name": Utf8,
+       "data": Optional(Utf8)  # Nullable field
+   })
+
+You can also generate a ``StructType`` directly from a SQLAlchemy Table definition. This is particularly useful for bulk operations like ``UPSERT`` where the structure needs to match the table schema exactly.
+
+.. code-block:: python
+
+   # 2. Generating StructType from a Table
+   # Useful for AS_TABLE bulk operations where the structure matches a table
+   from sqlalchemy import Table, Column, Integer, String, MetaData
+
+   metadata = MetaData()
+   user_table = Table(
+       "users",
+       metadata,
+       Column("id", Integer, primary_key=True),
+       Column("name", String),
+       Column("email", String, nullable=True)
+   )
+
+   # Generates: Struct<id: Integer, name: String, email: Optional<String>>
+   user_struct = StructType.from_table(user_table)
+
+   # 3. Using StructType with AS_TABLE for efficient bulk updates (Upsert)
+   # This example demonstrates how to perform a bulk UPSERT using a list of structs.
+   import sqlalchemy as sa
+   from ydb_sqlalchemy.sqlalchemy import upsert
+
+   # Define the list of data to be upserted
+   data_to_upsert = [
+       {"id": 1, "name": "Alice", "email": "alice@example.com"},
+       {"id": 2, "name": "Bob", "email": None},
+   ]
+
+   # Create the upsert statement
+   # We use from_select to insert data selected from the bound parameter :data
+   # func.AS_TABLE converts the list of structs into a table-like source
+   stmt = upsert(user_table).from_select(
+       [c.name for c in user_table.columns],
+       sa.select(
+           sa.func.AS_TABLE(
+               sa.bindparam("data", value=data_to_upsert, type_=sa.ARRAY(user_struct))
+           )
+       )
+   )
+
+   # Execute the statement
+   # session.execute(stmt)
+
+For detailed API reference, see: :class:`~ydb_sqlalchemy.sqlalchemy.types.StructType` and :class:`~ydb_sqlalchemy.sqlalchemy.types.Optional`.
