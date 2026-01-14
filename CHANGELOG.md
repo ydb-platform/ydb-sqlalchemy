@@ -1,3 +1,5 @@
+* Support nullable StructType fields via Optional wrapper
+
 ## 0.1.14 ##
 * Add ability to propagate RetrySettings
 
