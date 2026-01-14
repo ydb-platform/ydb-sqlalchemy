@@ -1,3 +1,4 @@
+* Support for sa.BINARY and sa.BLOB types
 * Support nullable StructType fields via Optional wrapper
 
 ## 0.1.14 ##
