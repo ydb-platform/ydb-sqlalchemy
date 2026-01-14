@@ -12,6 +12,7 @@ from sqlalchemy.sql.compiler import (
     StrSQLTypeCompiler,
     selectable,
 )
+from sqlalchemy.sql.type_api import to_instance
 from typing import (
     Any,
     Dict,
@@ -152,11 +153,17 @@ class BaseYqlTypeCompiler(StrSQLTypeCompiler):
         inner = self.process(type_.item_type, **kw)
         return f"List<{inner}>"
 
+    def visit_optional(self, type_: types.Optional, **kw):
+        el = to_instance(type_.element_type)
+        inner = self.process(el, **kw)
+        return f"Optional<{inner}>"
+
     def visit_struct_type(self, type_: types.StructType, **kw):
-        text = "Struct<"
-        for field, field_type in type_.fields_types:
-            text += f"{field}:{self.process(field_type, **kw)}"
-        return text + ">"
+        rendered_types = []
+        for field, field_type in type_.fields_types.items():
+            type_str = self.process(field_type, **kw)
+            rendered_types.append(f"{field}:{type_str}")
+        return f"Struct<{','.join(rendered_types)}>"
 
     def get_ydb_type(
         self, type_: sa.types.TypeEngine, is_optional: bool
@@ -166,6 +173,10 @@ class BaseYqlTypeCompiler(StrSQLTypeCompiler):
 
         if isinstance(type_, (sa.Text, sa.String)):
             ydb_type = ydb.PrimitiveType.Utf8
+
+        elif isinstance(type_, types.Optional):
+            inner = to_instance(type_.element_type)
+            return self.get_ydb_type(inner, is_optional=True)
 
         # Integers
         elif isinstance(type_, types.UInt64):
@@ -235,7 +246,8 @@ class BaseYqlTypeCompiler(StrSQLTypeCompiler):
         elif isinstance(type_, types.StructType):
             ydb_type = ydb.StructType()
             for field, field_type in type_.fields_types.items():
-                ydb_type.add_member(field, self.get_ydb_type(field_type(), is_optional=False))
+                inner_type = to_instance(field_type)
+                ydb_type.add_member(field, self.get_ydb_type(inner_type, is_optional=False))
         else:
             raise NotSupportedError(f"{type_} bind variables not supported")
 
