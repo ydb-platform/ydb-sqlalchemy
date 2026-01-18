@@ -2,11 +2,13 @@ import asyncio
 import datetime
 from decimal import Decimal
 from typing import NamedTuple
-
+from sqlalchemy.schema import CreateTable, DropTable
 import pytest
 import sqlalchemy as sa
 import ydb
-from sqlalchemy import Column, Integer, String, Table, Unicode
+from sqlalchemy import Column, Integer, String, Table, Unicode, insert, select
+from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy.testing import async_test
 from sqlalchemy.testing.fixtures import TablesTest, TestBase, config
 from ydb._grpc.v4.protos import ydb_common_pb2
 
@@ -404,11 +406,11 @@ class TestWithClause(TablesTest):
         ],
     )
     def test_auto_partitioning_min_partitions_count(
-        self,
-        connection,
-        auto_partitioning_min_partitions_count,
-        res,
-        metadata,
+            self,
+            connection,
+            auto_partitioning_min_partitions_count,
+            res,
+            metadata,
     ):
         desc = self._create_table_and_get_desc(
             connection,
@@ -425,11 +427,11 @@ class TestWithClause(TablesTest):
         ],
     )
     def test_auto_partitioning_max_partitions_count(
-        self,
-        connection,
-        auto_partitioning_max_partitions_count,
-        res,
-        metadata,
+            self,
+            connection,
+            auto_partitioning_max_partitions_count,
+            res,
+            metadata,
     ):
         desc = self._create_table_and_get_desc(
             connection,
@@ -446,11 +448,11 @@ class TestWithClause(TablesTest):
         ],
     )
     def test_uniform_partitions(
-        self,
-        connection,
-        uniform_partitions,
-        res,
-        metadata,
+            self,
+            connection,
+            uniform_partitions,
+            res,
+            metadata,
     ):
         desc = self._create_table_and_get_desc(
             connection,
@@ -468,11 +470,11 @@ class TestWithClause(TablesTest):
         ],
     )
     def test_partition_at_keys(
-        self,
-        connection,
-        partition_at_keys,
-        res,
-        metadata,
+            self,
+            connection,
+            partition_at_keys,
+            res,
+            metadata,
     ):
         desc = self._create_table_and_get_desc(
             connection,
@@ -559,10 +561,10 @@ class TestTransaction(TablesTest):
     @pytest.mark.parametrize(
         "isolation_level",
         (
-            IsolationLevel.ONLINE_READONLY,
-            IsolationLevel.ONLINE_READONLY_INCONSISTENT,
-            IsolationLevel.STALE_READONLY,
-            IsolationLevel.AUTOCOMMIT,
+                IsolationLevel.ONLINE_READONLY,
+                IsolationLevel.ONLINE_READONLY_INCONSISTENT,
+                IsolationLevel.STALE_READONLY,
+                IsolationLevel.AUTOCOMMIT,
         ),
     )
     def test_not_interactive_transaction(self, connection_no_trans, connection, isolation_level):
@@ -697,6 +699,13 @@ class TestAsyncEngine(TestEngine):
         finally:
             loop.run_until_complete(session_pool.stop())
 
+    @pytest.mark.asyncio
+    async def test_crud_commands_on_session(self, async_testing_engine):
+        engine = async_testing_engine()
+        maker = async_sessionmaker(engine)
+        async with maker() as session:
+            await session.execute(sa.text("SELECT 1 as value"))
+
 
 class TestCredentials(TestBase):
     __backend__ = True
@@ -747,6 +756,36 @@ class TestCredentials(TestBase):
             with engine.connect() as conn:
                 conn.execute(sa.text("SELECT 1 as value"))
         assert "Invalid password" in str(excinfo.value)
+
+
+class TestAsyncCRUD(TestBase):
+    __only_on__ = "yql+ydb_async"
+
+    @async_test
+    async def test_crud(self, async_testing_engine, metadata):
+        engine = async_testing_engine()
+        maker = async_sessionmaker(engine)
+        async with maker() as session:
+            res = await session.scalar(sa.text("SELECT 1 as value"))
+
+        assert res == 1
+        table = Table(
+            'test',
+            metadata,
+            Column("id", Integer, primary_key=True),
+            Column("name", String),
+        )
+
+        async with maker() as session:
+            await session.execute(CreateTable(table))
+
+            # t1 = TestModel(id=1, name="test")
+            stmt = insert(table).values(id=1, name="test")
+            await session.execute(stmt)
+            stmt = select(table).where(table.c.id == 1)
+            t2 = await session.scalar(stmt)
+            assert t2 == 1
+            await session.execute(DropTable(table))
 
 
 class TestUpsert(TablesTest):
