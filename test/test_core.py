@@ -1150,6 +1150,12 @@ class TestAsTable(TablesTest):
             Column("val_int", Integer, nullable=True),
             Column("val_str", String, nullable=True),
         )
+        Table(
+            "test_as_table_json",
+            metadata,
+            Column("id", Integer, primary_key=True),
+            Column("data", sa.JSON, nullable=True),
+        )
 
     def test_upsert_as_table(self, connection):
         table = self.tables.test_as_table
@@ -1185,6 +1191,36 @@ class TestAsTable(TablesTest):
             (1, 10, "a"),
             (2, None, "b"),
             (3, 30, None),
+        ]
+
+    def test_upsert_from_table_json(self, connection):
+        table = self.tables.test_as_table_json
+
+        input_data = [
+            {"id": 1, "data": {"a": 1}},
+            {"id": 2, "data": [1, 2, 3]},
+            {"id": 3, "data": None},
+        ]
+
+        struct_type = types.StructType.from_table(table)
+        list_type = types.ListType(struct_type)
+
+        bind_param = sa.bindparam("input_data", type_=list_type)
+
+        cols = [sa.column(c.name, type_=c.type) for c in table.columns]
+        upsert_stm = ydb_sa.upsert(table).from_select(
+            [c.name for c in table.columns],
+            sa.select(*cols).select_from(sa.func.AS_TABLE(bind_param)),
+        )
+
+        connection.execute(upsert_stm, {"input_data": input_data})
+
+        rows = connection.execute(sa.select(table).order_by(table.c.id)).fetchall()
+
+        assert rows == [
+            (1, {"a": 1}),
+            (2, [1, 2, 3]),
+            (3, None),
         ]
 
     def test_insert_as_table(self, connection):
