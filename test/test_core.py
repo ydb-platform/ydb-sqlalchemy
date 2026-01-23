@@ -1157,7 +1157,8 @@ class TestAsTable(TablesTest):
             Column("data", sa.JSON, nullable=True),
         )
 
-    def test_upsert_as_table(self, connection):
+    @pytest.mark.parametrize("list_cls", [types.ListType, sa.ARRAY])
+    def test_upsert_as_table(self, connection, list_cls):
         table = self.tables.test_as_table
 
         input_data = [
@@ -1173,7 +1174,7 @@ class TestAsTable(TablesTest):
                 "val_str": types.Optional(String),
             }
         )
-        list_type = types.ListType(struct_type)
+        list_type = list_cls(struct_type)
 
         bind_param = sa.bindparam("data", type_=list_type)
 
@@ -1193,7 +1194,8 @@ class TestAsTable(TablesTest):
             (3, 30, None),
         ]
 
-    def test_upsert_from_table_json(self, connection):
+    @pytest.mark.parametrize("list_cls", [types.ListType, sa.ARRAY])
+    def test_upsert_from_table_json(self, connection, list_cls):
         table = self.tables.test_as_table_json
 
         input_data = [
@@ -1203,7 +1205,7 @@ class TestAsTable(TablesTest):
         ]
 
         struct_type = types.StructType.from_table(table)
-        list_type = types.ListType(struct_type)
+        list_type = list_cls(struct_type)
 
         bind_param = sa.bindparam("input_data", type_=list_type)
 
@@ -1223,7 +1225,8 @@ class TestAsTable(TablesTest):
             (3, None),
         ]
 
-    def test_insert_as_table(self, connection):
+    @pytest.mark.parametrize("list_cls", [types.ListType, sa.ARRAY])
+    def test_insert_as_table(self, connection, list_cls):
         table = self.tables.test_as_table
 
         input_data = [
@@ -1238,7 +1241,7 @@ class TestAsTable(TablesTest):
                 "val_str": types.Optional(String),
             }
         )
-        list_type = types.ListType(struct_type)
+        list_type = list_cls(struct_type)
 
         bind_param = sa.bindparam("data", type_=list_type)
 
@@ -1257,7 +1260,8 @@ class TestAsTable(TablesTest):
             (5, None, "e"),
         ]
 
-    def test_upsert_from_table_reflection(self, connection):
+    @pytest.mark.parametrize("list_cls", [types.ListType, sa.ARRAY])
+    def test_upsert_from_table_reflection(self, connection, list_cls):
         table = self.tables.test_as_table
 
         input_data = [
@@ -1266,7 +1270,7 @@ class TestAsTable(TablesTest):
         ]
 
         struct_type = types.StructType.from_table(table)
-        list_type = types.ListType(struct_type)
+        list_type = list_cls(struct_type)
 
         bind_param = sa.bindparam("data", type_=list_type)
 

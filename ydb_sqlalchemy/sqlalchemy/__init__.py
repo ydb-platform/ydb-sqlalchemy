@@ -160,6 +160,7 @@ class YqlDialect(StrCompileDialect):
         sa.types.BINARY: types.Binary,
         sa.types.LargeBinary: types.Binary,
         sa.types.BLOB: types.Binary,
+        sa.types.ARRAY: types.ListType,
     }
 
     connection_characteristics = util.immutabledict(
