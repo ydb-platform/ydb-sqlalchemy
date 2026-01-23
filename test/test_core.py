@@ -181,12 +181,19 @@ class TestSimpleSelect(TablesTest):
         rows = connection.execute(stm).fetchall()
         assert set(rows) == {(1,), (2,), (3,), (4,), (6,), (7,)}
 
+        # LIMIT
+        rows = connection.execute(tb.select().order_by(tb.c.id).limit(2)).fetchall()
+        assert rows == [
+            (1, "some text", Decimal("3.141592653")),
+            (2, "test text", Decimal("3.14159265")),
+        ]
+
         # LIMIT/OFFSET
-        # rows = connection.execute(tb.select().order_by(tb.c.id).limit(2)).fetchall()
-        # assert rows == [
-        #     (1, "some text", Decimal("3.141592653")),
-        #     (2, "test text", Decimal("3.14159265")),
-        # ]
+        rows = connection.execute(tb.select().order_by(tb.c.id).limit(2).offset(1)).fetchall()
+        assert rows == [
+            (2, "test text", Decimal("3.14159265")),
+            (3, "test test", Decimal("3.1415926")),
+        ]
 
         # ORDER BY ASC
         rows = connection.execute(sa.select(tb.c.id).order_by(tb.c.id)).fetchall()
@@ -223,7 +230,7 @@ class TestTypes(TablesTest):
             "test_primitive_types",
             metadata,
             Column("int", sa.Integer, primary_key=True),
-            # Column("bin", sa.BINARY),
+            Column("bin", sa.BINARY),
             Column("str", sa.String),
             Column("float", sa.Float),
             Column("bool", sa.Boolean),
@@ -253,7 +260,7 @@ class TestTypes(TablesTest):
 
         statement = sa.insert(table).values(
             int=42,
-            # bin=b"abc",
+            bin=b"abc",
             str="Hello World!",
             float=3.5,
             bool=True,
@@ -262,7 +269,7 @@ class TestTypes(TablesTest):
         connection.execute(statement)
 
         row = connection.execute(sa.select(table)).fetchone()
-        assert row == (42, "Hello World!", 3.5, True)
+        assert row == (42, b'abc', "Hello World!", 3.5, True)
 
     def test_all_binary_types(self, connection):
         table = self.tables.test_all_binary_types
