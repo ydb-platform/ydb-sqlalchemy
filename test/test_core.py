@@ -269,7 +269,7 @@ class TestTypes(TablesTest):
         connection.execute(statement)
 
         row = connection.execute(sa.select(table)).fetchone()
-        assert row == (42, b'abc', "Hello World!", 3.5, True)
+        assert row == (42, b"abc", "Hello World!", 3.5, True)
 
     def test_all_binary_types(self, connection):
         table = self.tables.test_all_binary_types
