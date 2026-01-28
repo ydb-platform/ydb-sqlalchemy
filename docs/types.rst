@@ -346,6 +346,7 @@ You can also generate a ``StructType`` directly from a SQLAlchemy Table definiti
    # This example demonstrates how to perform a bulk UPSERT using a list of structs.
    import sqlalchemy as sa
    from ydb_sqlalchemy.sqlalchemy import upsert
+   from ydb_sqlalchemy.sqlalchemy.types import ListType
 
    # Define the list of data to be upserted
    data_to_upsert = [
@@ -353,16 +354,19 @@ You can also generate a ``StructType`` directly from a SQLAlchemy Table definiti
        {"id": 2, "name": "Bob", "email": None},
    ]
 
+   # Define bind parameter
+   # Wrap the StructType in ListType because we are passing a list of structs
+   bind_param = sa.bindparam("data", value=data_to_upsert, type_=ListType(user_struct))
+
+   # Define columns to select from the AS_TABLE source
+   # AS_TABLE returns a table-like structure, so we need to select columns from it
+   cols = [sa.column(c.name, type_=c.type) for c in user_table.columns]
+
    # Create the upsert statement
    # We use from_select to insert data selected from the bound parameter :data
-   # func.AS_TABLE converts the list of structs into a table-like source
    stmt = upsert(user_table).from_select(
        [c.name for c in user_table.columns],
-       sa.select(
-           sa.func.AS_TABLE(
-               sa.bindparam("data", value=data_to_upsert, type_=sa.ARRAY(user_struct))
-           )
-       )
+       sa.select(*cols).select_from(sa.func.AS_TABLE(bind_param))
    )
 
    # Execute the statement

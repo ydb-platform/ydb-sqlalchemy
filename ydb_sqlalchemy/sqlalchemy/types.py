@@ -110,6 +110,18 @@ class Decimal(types.DECIMAL):
 class ListType(ARRAY):
     __visit_name__ = "list_type"
 
+    def bind_processor(self, dialect):
+        item_proc = self.item_type.bind_processor(dialect)
+
+        def process(value):
+            if value is None:
+                return None
+            return [item_proc(v) if v is not None else None for v in value]
+
+        if item_proc:
+            return process
+        return None
+
 
 class HashableDict(dict):
     def __hash__(self):
@@ -172,6 +184,32 @@ class StructType(types.TypeEngine[Mapping[str, Any]]):
 
     def compare_values(self, x, y):
         return x == y
+
+    def bind_processor(self, dialect):
+        processors = {}
+        for name, type_ in self.fields_types.items():
+            if isinstance(type_, Optional):
+                type_ = type_.element_type
+
+            type_ = type_api.to_instance(type_)
+            proc = type_.bind_processor(dialect)
+            if proc:
+                processors[name] = proc
+
+        if not processors:
+            return None
+
+        def process(value):
+            if value is None:
+                return None
+            new_value = value.copy()
+            for name, proc in processors.items():
+                if name in new_value:
+                    if new_value[name] is not None:
+                        new_value[name] = proc(new_value[name])
+            return new_value
+
+        return process
 
 
 class Lambda(ColumnElement):
