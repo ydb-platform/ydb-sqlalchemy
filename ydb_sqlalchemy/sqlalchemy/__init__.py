@@ -67,6 +67,7 @@ COLUMN_TYPES = {
     ydb.PrimitiveType.Datetime: sa.DATETIME,
     ydb.PrimitiveType.Timestamp: sa.TIMESTAMP,
     ydb.PrimitiveType.Interval: sa.INTEGER,
+    ydb.PrimitiveType.Interval64: sa.INTEGER,
     ydb.PrimitiveType.Bool: sa.BOOLEAN,
     ydb.PrimitiveType.DyNumber: sa.TEXT,
 }
