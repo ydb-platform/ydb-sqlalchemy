@@ -70,7 +70,6 @@ COLUMN_TYPES = {
     ydb.PrimitiveType.Interval64: sa.INTEGER,
     ydb.PrimitiveType.Bool: sa.BOOLEAN,
     ydb.PrimitiveType.DyNumber: sa.TEXT,
-    ydb.PrimitiveType.UUID: sa.TEXT,
 }
 
 
