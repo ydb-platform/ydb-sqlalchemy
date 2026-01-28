@@ -152,8 +152,7 @@ def run_example_core(engine):
             .where(sa.and_(tb.c.series_id == 1, tb.c.season_id == 3))
             .where(tb.c.title.like("%"))
             .order_by(sa.asc(tb.c.title))
-            # TODO: limit isn't working now
-            # .limit(3)
+            .limit(3)
         )
         rs = conn.execute(stm)
         print(rs.fetchall())
