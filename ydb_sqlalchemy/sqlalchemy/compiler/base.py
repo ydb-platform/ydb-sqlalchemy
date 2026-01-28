@@ -44,19 +44,6 @@ else:
     from sqlalchemy import Cast as _cast
 
 
-STR_QUOTE_MAP = {
-    "'": "\\'",
-    "\\": "\\\\",
-    "\0": "\\0",
-    "\b": "\\b",
-    "\f": "\\f",
-    "\r": "\\r",
-    "\n": "\\n",
-    "\t": "\\t",
-    "%": "%%",
-}
-
-
 COMPOUND_KEYWORDS = {
     selectable.CompoundSelect.UNION: "UNION ALL",
     selectable.CompoundSelect.UNION_ALL: "UNION ALL",
@@ -65,6 +52,19 @@ COMPOUND_KEYWORDS = {
     selectable.CompoundSelect.INTERSECT: "INTERSECT",
     selectable.CompoundSelect.INTERSECT_ALL: "INTERSECT ALL",
 }
+
+
+ESCAPE_RULES = [
+    ("\\", "\\\\"),  # Must be first to avoid double escaping
+    ("'", "\\'"),
+    ("\0", "\\0"),
+    ("\b", "\\b"),
+    ("\f", "\\f"),
+    ("\r", "\\r"),
+    ("\n", "\\n"),
+    ("\t", "\\t"),
+    ("%", "%%"),
+]
 
 
 class BaseYqlTypeCompiler(StrSQLTypeCompiler):
@@ -293,7 +293,8 @@ class BaseYqlCompiler(StrSQLCompiler):
 
     def render_literal_value(self, value, type_):
         if isinstance(value, str):
-            value = "".join(STR_QUOTE_MAP.get(x, x) for x in value)
+            for pattern, replacement in ESCAPE_RULES:
+                value = value.replace(pattern, replacement)
             return f"'{value}'"
         return super().render_literal_value(value, type_)
 
