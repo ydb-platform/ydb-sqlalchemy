@@ -1,3 +1,6 @@
+* optimize string literal escaping
+* Fix: StructType and ListType can't handle compound types
+
 ## 0.1.15 ##
 * Support for sa.BINARY and sa.BLOB types
 * Support nullable StructType fields via Optional wrapper
