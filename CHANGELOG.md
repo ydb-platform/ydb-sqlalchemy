@@ -1,3 +1,4 @@
+## 0.1.16 ##
 * optimize string literal escaping
 * Fix: StructType and ListType can't handle compound types
 
