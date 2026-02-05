@@ -114,6 +114,30 @@ def test_types_compilation():
     assert compile_type(struct) == "Struct<a:Int32,b:List<Int32>>"
 
 
+def test_statement_prefixes_prepended_to_query():
+    dialect = YqlDialect(_statement_prefixes_list=["PRAGMA DistinctOverKeys;"])
+    result = dialect._apply_statement_prefixes_impl("SELECT 1")
+    assert result == "PRAGMA DistinctOverKeys;\nSELECT 1"
+
+
+def test_statement_prefixes_empty_list_unchanged():
+    dialect = YqlDialect(_statement_prefixes_list=[])
+    result = dialect._apply_statement_prefixes_impl("SELECT 1")
+    assert result == "SELECT 1"
+
+
+def test_statement_prefixes_none_unchanged():
+    dialect = YqlDialect()
+    result = dialect._apply_statement_prefixes_impl("SELECT 1")
+    assert result == "SELECT 1"
+
+
+def test_statement_prefixes_multiple():
+    dialect = YqlDialect(_statement_prefixes_list=["PRAGMA Foo;", "PRAGMA Bar;"])
+    result = dialect._apply_statement_prefixes_impl("SELECT 1")
+    assert result == "PRAGMA Foo;\nPRAGMA Bar;\nSELECT 1"
+
+
 def test_optional_type_compilation():
     dialect = YqlDialect()
     type_compiler = dialect.type_compiler

@@ -206,6 +206,7 @@ class YqlDialect(StrCompileDialect):
         json_serializer=None,
         json_deserializer=None,
         _add_declare_for_yql_stmt_vars=False,
+        _statement_prefixes_list=None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -215,6 +216,7 @@ class YqlDialect(StrCompileDialect):
         # NOTE: _add_declare_for_yql_stmt_vars is temporary and is soon to be removed.
         # no need in declare in yql statement here since ydb 24-1
         self._add_declare_for_yql_stmt_vars = _add_declare_for_yql_stmt_vars
+        self._statement_prefixes = tuple(_statement_prefixes_list) if _statement_prefixes_list else ()
 
     def _describe_table(self, connection, table_name, schema=None) -> ydb.TableDescription:
         if schema is not None:
@@ -405,6 +407,12 @@ class YqlDialect(StrCompileDialect):
         )
         return f"{declarations}\n{statement}"
 
+    def _apply_statement_prefixes_impl(self, statement: str) -> str:
+        if not self._statement_prefixes:
+            return statement
+        prefixes = "\n".join(self._statement_prefixes) + "\n"
+        return f"{prefixes}{statement}"
+
     def __merge_parameters_values_and_types(
         self, values: Mapping[str, Any], types: Mapping[str, Any], execute_many: bool
     ) -> Sequence[Mapping[str, ydb.TypedValue]]:
@@ -438,9 +446,12 @@ class YqlDialect(StrCompileDialect):
             statement, parameters = self._format_variables(statement, parameters, execute_many)
             if self._add_declare_for_yql_stmt_vars:
                 statement = self._add_declare_for_yql_stmt_vars_impl(statement, parameters_types)
+            statement = self._apply_statement_prefixes_impl(statement)
             return statement, parameters
 
         statement, parameters = self._format_variables(statement, parameters, execute_many)
+        if not is_ddl:
+            statement = self._apply_statement_prefixes_impl(statement)
         return statement, parameters
 
     def do_ping(self, dbapi_connection: ydb_dbapi.Connection) -> bool:
