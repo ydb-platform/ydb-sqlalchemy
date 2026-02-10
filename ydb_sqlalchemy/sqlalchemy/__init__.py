@@ -450,8 +450,7 @@ class YqlDialect(StrCompileDialect):
             return statement, parameters
 
         statement, parameters = self._format_variables(statement, parameters, execute_many)
-        if not is_ddl:
-            statement = self._apply_statement_prefixes_impl(statement)
+        statement = self._apply_statement_prefixes_impl(statement)
         return statement, parameters
 
     def do_ping(self, dbapi_connection: ydb_dbapi.Connection) -> bool:
