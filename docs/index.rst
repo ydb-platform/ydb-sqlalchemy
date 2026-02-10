@@ -78,6 +78,7 @@ Table of Contents
    connection
    types
    migrations
+   advanced
 
 .. toctree::
    :maxdepth: 2
