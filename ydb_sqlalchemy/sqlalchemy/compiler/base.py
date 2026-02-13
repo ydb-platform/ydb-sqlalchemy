@@ -365,16 +365,15 @@ class BaseYqlCompiler(StrSQLCompiler):
     def _guess_bound_variable_type_by_parameters(
         self, bind, post_compile_bind_values: list
     ) -> Optional[sa.types.TypeEngine]:
-        bind_type = bind.type
-        if bind.expanding or (isinstance(bind.type, sa.types.NullType) and post_compile_bind_values):
+        if not isinstance(bind.type, sa.types.NullType):
+            return bind.type
+
+        if post_compile_bind_values:
             not_null_values = [v for v in post_compile_bind_values if v is not None]
             if not_null_values:
-                bind_type = _bindparam("", not_null_values[0]).type
+                return _bindparam("", not_null_values[0]).type
 
-        if isinstance(bind_type, sa.types.NullType):
-            return None
-
-        return bind_type
+        return None
 
     def _get_expanding_bind_names(self, bind_name: str, parameters_values: Mapping[str, List[Any]]) -> List[Any]:
         expanding_bind_names = []
