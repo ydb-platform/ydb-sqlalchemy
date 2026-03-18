@@ -25,6 +25,8 @@ from ydb_sqlalchemy.sqlalchemy.compiler import YqlCompiler, YqlDDLCompiler, YqlI
 
 from . import types
 
+from .._version import VERSION
+
 
 OLD_SA = sa.__version__ < "2."
 
@@ -351,6 +353,8 @@ class YqlDialect(StrCompileDialect):
         if "database" in kwargs:
             if not kwargs["database"].startswith("/"):
                 kwargs["database"] = "/" + kwargs["database"]
+
+        kwargs["_additional_sdk_headers"] = tuple(["ydb-sqlalchemy/" + VERSION])
 
         return [args, kwargs]
 
