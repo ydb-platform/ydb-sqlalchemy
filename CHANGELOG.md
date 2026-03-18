@@ -1,3 +1,5 @@
+* Pass lib version to sdk header
+
 ## 0.1.18 ##
 * Apply prefixes to DDL as well
 
