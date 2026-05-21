@@ -1,3 +1,5 @@
+* Support YDB view reflection
+
 ## 0.1.19 ##
 * Pass lib version to sdk header
 
