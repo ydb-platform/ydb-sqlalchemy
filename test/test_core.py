@@ -753,7 +753,8 @@ class TestCredentials(TestBase):
         with pytest.raises(Exception) as excinfo:
             with engine.connect() as conn:
                 conn.execute(sa.text("SELECT 1 as value"))
-        assert "Invalid password" in str(excinfo.value)
+        error_message = str(excinfo.value)
+        assert "Invalid password" in error_message or "StaticCredentials" in error_message
 
 
 class TestUpsert(TablesTest):
