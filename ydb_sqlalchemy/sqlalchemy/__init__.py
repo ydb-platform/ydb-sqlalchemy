@@ -265,14 +265,14 @@ class YqlDialect(StrCompileDialect):
             raise NoSuchTableError(qt) from e
 
     @reflection.cache
-    def get_view_names(self, connection, schema=None, **kw: Any):
+    def get_view_names(self, connection, schema=None, **kw):
         self._ensure_schema_unsupported(schema)
 
         raw_conn = connection.connection
         return raw_conn.get_view_names()
 
     @reflection.cache
-    def get_view_definition(self, connection, view_name, schema=None, **kw: Any):
+    def get_view_definition(self, connection, view_name, schema=None, **kw):
         self._ensure_schema_unsupported(schema)
 
         quoted_view_name = self.identifier_preparer.quote(view_name)
