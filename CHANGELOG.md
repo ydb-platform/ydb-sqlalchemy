@@ -1,3 +1,5 @@
+* Fix dialect import failure on SQLAlchemy 1.4 (drop kwargs annotation on view reflection methods)
+
 ## 0.1.20 ##
 * Support YDB view reflection
 
