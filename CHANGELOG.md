@@ -1,3 +1,4 @@
+## 0.1.21 ##
 * Fix dialect import failure on SQLAlchemy 1.4 (drop kwargs annotation on view reflection methods)
 
 ## 0.1.20 ##
