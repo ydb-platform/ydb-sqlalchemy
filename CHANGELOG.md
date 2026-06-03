@@ -1,3 +1,4 @@
+## 0.1.22 ##
 * Ignore table schema in reflection and SQL compilation
 
 ## 0.1.21 ##
