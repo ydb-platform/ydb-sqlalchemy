@@ -270,6 +270,10 @@ class BaseYqlCompiler(StrSQLCompiler):
     def get_from_hint_text(self, table, text):
         return text
 
+    def visit_table(self, table, use_schema=True, **kwargs):
+        # supports_schemas=False: never emit a schema qualifier in FROM/hint clauses.
+        return super().visit_table(table, use_schema=False, **kwargs)
+
     def group_by_clause(self, select, **kw):
         # Hack to ensure it is possible to define labels in groupby.
         kw.update(within_columns_clause=True)
@@ -529,6 +533,10 @@ class BaseYqlIdentifierPreparer(IdentifierPreparer):
             initial_quote="`",
             final_quote="`",
         )
+
+    def format_table(self, table, use_schema=True, name=None):
+        # supports_schemas=False: never emit a schema qualifier in DML/DDL.
+        return super().format_table(table, use_schema=False, name=name)
 
     def format_index(self, index: sa.Index) -> str:
         return super().format_index(index).replace("/", "_")

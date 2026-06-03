@@ -250,13 +250,9 @@ class YqlDialect(StrCompileDialect):
         self._add_declare_for_yql_stmt_vars = _add_declare_for_yql_stmt_vars
         self._statement_prefixes = tuple(_statement_prefixes_list) if _statement_prefixes_list else ()
 
-    def _ensure_schema_unsupported(self, schema):
-        if schema:
-            raise ydb_dbapi.NotSupportedError("unsupported on non empty schema")
-
     def _describe_table(self, connection, table_name, schema=None) -> ydb.TableDescription:
-        self._ensure_schema_unsupported(schema)
-
+        # supports_schemas=False: the schema argument is ignored, reflection always
+        # targets the connected database.
         qt = table_name if isinstance(table_name, str) else table_name.name
         raw_conn = connection.connection
         try:
@@ -266,15 +262,11 @@ class YqlDialect(StrCompileDialect):
 
     @reflection.cache
     def get_view_names(self, connection, schema=None, **kw):
-        self._ensure_schema_unsupported(schema)
-
         raw_conn = connection.connection
         return raw_conn.get_view_names()
 
     @reflection.cache
     def get_view_definition(self, connection, view_name, schema=None, **kw):
-        self._ensure_schema_unsupported(schema)
-
         quoted_view_name = self.identifier_preparer.quote(view_name)
         result = connection.execute(sa.text(f"SHOW CREATE VIEW {quoted_view_name}"))
         row = result.fetchone()
@@ -301,8 +293,6 @@ class YqlDialect(StrCompileDialect):
 
     @reflection.cache
     def get_table_names(self, connection, schema=None, **kw):
-        self._ensure_schema_unsupported(schema)
-
         raw_conn = connection.connection
         return raw_conn.get_table_names()
 
