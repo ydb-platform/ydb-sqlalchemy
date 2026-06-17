@@ -94,7 +94,9 @@ jobs:
 
           # Baseline: baseline dialect with the CURRENT workload runner so the
           # runner-side contract (entrypoint, metric names) is identical for both.
+          # main has no tests/ dir, so create the parent before copying the runner.
           rm -rf "$GITHUB_WORKSPACE/baseline/tests/slo"
+          mkdir -p "$GITHUB_WORKSPACE/baseline/tests"
           cp -r "$GITHUB_WORKSPACE/current/tests/slo" "$GITHUB_WORKSPACE/baseline/tests/slo"
           docker build \
             -f "$GITHUB_WORKSPACE/baseline/tests/slo/Dockerfile" \
