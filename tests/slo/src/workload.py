@@ -9,9 +9,10 @@ supported, selected by ``WORKLOAD_NAME`` / ``--mode``:
   * ``core`` — SQLAlchemy Core (``Connection.execute``)
   * ``orm``  — SQLAlchemy ORM (``Session`` + imperatively mapped entity)
 
-Every operation is wrapped in an idempotent retry loop so that transient
-failures injected by ydb-slo-action's chaos layer turn into latency rather than
-into availability drops.
+Each operation is a single autocommit statement. The dialect runs in AUTOCOMMIT
+by default, so every ``execute`` already goes through the YDB SDK's
+``retry_operation_sync`` inside ydb-dbapi — there is no app-level retry here, and
+a surfaced exception is recorded as a genuine SLO failure.
 """
 
 import logging
@@ -60,28 +61,20 @@ def _limiter_for_rps(rps: int) -> SyncRateLimiter:
     return SyncRateLimiter(0.0 if rps <= 0 else 1.0 / rps)
 
 
-def retry_call(fn, *, deadline: float, max_attempts: int):
+def _measure(metrics, op_type, fn):
+    """Run a single operation, timing it and recording success/failure.
+
+    No app-level retry: in AUTOCOMMIT the ydb-dbapi layer already retries
+    transient YDB errors, so any exception that reaches here is a real failure.
+    Exceptions are recorded (not re-raised) to keep the worker thread alive.
     """
-    Run ``fn`` until it succeeds, the deadline passes or ``max_attempts`` is hit.
-
-    Returns ``(attempts, error)`` where ``error`` is ``None`` on success. Reads
-    and UPSERT writes are idempotent, so retrying any failure is safe.
-    """
-    attempt = 0
-    last_error = None
-    while True:
-        attempt += 1
-        try:
-            fn()
-            return attempt, None
-        except Exception as err:  # noqa: BLE001 - idempotent ops, retry everything
-            last_error = err
-
-        if attempt >= max_attempts or time.monotonic() >= deadline:
-            return attempt, last_error
-
-        backoff = min(1.0, 0.02 * (2 ** min(attempt, 6)))
-        time.sleep(backoff * (0.5 + random.random()))
+    start = metrics.start(op_type)
+    error = None
+    try:
+        fn()
+    except Exception as err:  # noqa: BLE001 - count as a failed SLO op, keep going
+        error = err
+    metrics.stop(op_type, start, attempts=1, error=error)
 
 
 class Workload:
@@ -126,14 +119,7 @@ class Workload:
         while inserted < total:
             size = min(batch_size, total - inserted)
             batch = [generator.get().as_params() for _ in range(size)]
-            deadline = time.monotonic() + self.args.write_timeout / 1000
-            attempts, error = retry_call(
-                lambda b=batch: self._upsert_batch(engine, table, b),
-                deadline=deadline,
-                max_attempts=self.args.max_retries,
-            )
-            if error is not None:
-                raise error
+            self._upsert_batch(engine, table, batch)
             inserted += size
 
         logger.info("Inserted %s rows into %s", inserted, self.table_name)
@@ -224,7 +210,6 @@ class Workload:
 
     def _reader_loop(self, engine, table, read_stmt, metrics, limiter, max_id, end_time):
         model = ensure_mapped(table) if self.mode == "orm" else None
-        timeout_s = self.args.read_timeout / 1000
 
         while time.monotonic() < end_time:
             with limiter:
@@ -242,17 +227,9 @@ class Workload:
                         with engine.connect() as conn:
                             conn.execute(read_stmt, {"object_id": oid}).fetchall()
 
-                start = metrics.start(OP_TYPE_READ)
-                attempts, error = retry_call(
-                    do_read,
-                    deadline=time.monotonic() + timeout_s,
-                    max_attempts=self.args.max_retries,
-                )
-                metrics.stop(OP_TYPE_READ, start, attempts=attempts, error=error)
+                _measure(metrics, OP_TYPE_READ, do_read)
 
     def _writer_loop(self, engine, table, metrics, limiter, row_generator, end_time):
-        timeout_s = self.args.write_timeout / 1000
-
         while time.monotonic() < end_time:
             with limiter:
                 params = row_generator.get().as_params()
@@ -270,13 +247,7 @@ class Workload:
                         with engine.begin() as conn:
                             conn.execute(ydb_upsert(table).values(**p))
 
-                start = metrics.start(OP_TYPE_WRITE)
-                attempts, error = retry_call(
-                    do_write,
-                    deadline=time.monotonic() + timeout_s,
-                    max_attempts=self.args.max_retries,
-                )
-                metrics.stop(OP_TYPE_WRITE, start, attempts=attempts, error=error)
+                _measure(metrics, OP_TYPE_WRITE, do_write)
 
     @staticmethod
     def _metrics_loop(metrics, end_time, report_period_ms):

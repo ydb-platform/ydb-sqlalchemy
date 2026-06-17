@@ -12,9 +12,11 @@ on regressions.
 * **read** — `SELECT * FROM <table> WHERE object_id = :id` for a random id.
 * **write** — `UPSERT INTO <table> (...) VALUES (...)` for a fresh id.
 
-Both run in parallel from dedicated thread pools. Every operation is wrapped in
-an idempotent retry loop, so transient errors injected by the action's chaos
-layer become latency instead of availability drops.
+Both run in parallel from dedicated thread pools. Each operation is a single
+autocommit statement — there is no app-level retry. The dialect runs in
+AUTOCOMMIT by default, so every `execute` already goes through the YDB SDK's
+`retry_operation_sync` inside `ydb-dbapi`; any exception that still surfaces is
+recorded as a real SLO failure.
 
 Two execution modes (selected by `WORKLOAD_NAME` / `--mode`):
 
