@@ -27,8 +27,6 @@ def _add_create(subparsers):
     parser.add_argument("-p-min", "--min-partitions-count", default=6, type=int, help="Min partitions")
     parser.add_argument("-p-max", "--max-partitions-count", default=100, type=int, help="Max partitions")
     parser.add_argument("-p-size", "--partition-size", default=100, type=int, help="Partition size [MB]")
-    parser.add_argument("--write-timeout", default=20000, type=int, help="Write timeout [ms]")
-    parser.add_argument("--max-retries", default=30, type=int, help="Max attempts per operation")
 
 
 def _add_run(subparsers):
@@ -38,12 +36,9 @@ def _add_run(subparsers):
     parser.add_argument("--write-rps", default=50, type=int, help="Target write RPS")
     parser.add_argument("--read-threads", default=8, type=int, help="Reader threads")
     parser.add_argument("--write-threads", default=4, type=int, help="Writer threads")
-    parser.add_argument("--read-timeout", default=20000, type=int, help="Read timeout [ms]")
-    parser.add_argument("--write-timeout", default=20000, type=int, help="Write timeout [ms]")
     parser.add_argument("--initial-data-count", default=1000, type=int, help="Fallback id space when table is empty")
     parser.add_argument("--time", default=60, type=int, help="Run duration [s]")
     parser.add_argument("--shutdown-time", default=10, type=int, help="Graceful shutdown time [s]")
-    parser.add_argument("--max-retries", default=30, type=int, help="Max attempts per operation")
     parser.add_argument(
         "--otlp-endpoint",
         default="",
