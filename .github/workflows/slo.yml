@@ -1,0 +1,137 @@
+name: SLO
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, labeled]
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+jobs:
+  workload:
+    if: contains(github.event.pull_request.labels.*.name, 'SLO')
+
+    name: SLO workload (${{ matrix.workload.name }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        workload:
+          - name: core
+            command: "--read-rps 500 --write-rps 50"
+          - name: orm
+            command: "--read-rps 500 --write-rps 50"
+
+    concurrency:
+      group: slo-${{ github.ref }}-${{ matrix.workload.name }}
+      cancel-in-progress: true
+
+    steps:
+      - name: Install tooling
+        run: |
+          set -euxo pipefail
+          YQ_VERSION=v4.48.2
+          BUILDX_VERSION=0.30.1
+          COMPOSE_VERSION=2.40.3
+
+          sudo curl -fLo /usr/local/bin/yq \
+            "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+          sudo chmod +x /usr/local/bin/yq
+
+          sudo mkdir -p /usr/local/lib/docker/cli-plugins
+
+          sudo curl -fLo /usr/local/lib/docker/cli-plugins/docker-buildx \
+            "https://github.com/docker/buildx/releases/download/v${BUILDX_VERSION}/buildx-v${BUILDX_VERSION}.linux-amd64"
+          sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-buildx
+
+          sudo curl -fLo /usr/local/lib/docker/cli-plugins/docker-compose \
+            "https://github.com/docker/compose/releases/download/v${COMPOSE_VERSION}/docker-compose-linux-x86_64"
+          sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+          yq --version
+          docker --version
+          docker buildx version
+          docker compose version
+
+      - name: Checkout current dialect version
+        uses: actions/checkout@v5
+        with:
+          path: current
+          fetch-depth: 0
+
+      - name: Determine baseline commit
+        id: baseline
+        working-directory: current
+        run: |
+          set -euo pipefail
+          BASELINE=$(git merge-base HEAD origin/main)
+          echo "sha=${BASELINE}" >> "$GITHUB_OUTPUT"
+          if [ "$(git rev-parse origin/main)" = "${BASELINE}" ]; then
+            echo "ref=main" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=${BASELINE:0:7}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout baseline dialect version
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.baseline.outputs.sha }}
+          path: baseline
+          fetch-depth: 1
+
+      - name: Build workload images (current + baseline)
+        run: |
+          set -euxo pipefail
+
+          # Current: PR dialect + PR workload runner.
+          docker build \
+            -f "$GITHUB_WORKSPACE/current/tests/slo/Dockerfile" \
+            -t "ydb-slo-current" \
+            "$GITHUB_WORKSPACE/current"
+
+          # Baseline: baseline dialect with the CURRENT workload runner so the
+          # runner-side contract (entrypoint, metric names) is identical for both.
+          rm -rf "$GITHUB_WORKSPACE/baseline/tests/slo"
+          cp -r "$GITHUB_WORKSPACE/current/tests/slo" "$GITHUB_WORKSPACE/baseline/tests/slo"
+          docker build \
+            -f "$GITHUB_WORKSPACE/baseline/tests/slo/Dockerfile" \
+            -t "ydb-slo-baseline" \
+            "$GITHUB_WORKSPACE/baseline"
+
+      - name: Run SLO workload
+        uses: ydb-platform/ydb-slo-action/init@v2
+        timeout-minutes: 30
+        with:
+          github_issue: ${{ github.event.pull_request.number }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          workload_name: ${{ matrix.workload.name }}
+          workload_duration: "120"
+          workload_current_ref: ${{ github.head_ref || github.ref_name }}
+          workload_current_image: ydb-slo-current
+          workload_current_command: ${{ matrix.workload.command }}
+          workload_baseline_ref: ${{ steps.baseline.outputs.ref }}
+          workload_baseline_image: ydb-slo-baseline
+          workload_baseline_command: ${{ matrix.workload.command }}
+          # Trim the cluster (drop database-3/4/5) to fit a GitHub-hosted runner.
+          disable_compose_profiles: extra-nodes
+
+  report:
+    # Runs in the same workflow run as `workload`, so it sees the freshly
+    # uploaded metrics artifacts and can compare current vs baseline and gate
+    # the PR. Same-repo PRs have the pull-requests:write token this needs.
+    if: ${{ always() && contains(github.event.pull_request.labels.*.name, 'SLO') }}
+
+    name: SLO report
+    needs: workload
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Publish SLO report
+        uses: ydb-platform/ydb-slo-action/report@v2
+        with:
+          github_issue: ${{ github.event.pull_request.number }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_run_id: ${{ github.run_id }}
