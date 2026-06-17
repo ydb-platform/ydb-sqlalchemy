@@ -5,7 +5,7 @@ SQLAlchemy ships its dialect compliance suite. It covers autogenerate
 comparisons and the migration environment, and complements the YDB-specific
 scenarios in ``test_alembic.py``.
 
-Feature flags live in ``test/alembic_requirements.py``; only whole classes and
+Feature flags live in ``tests/integration/alembic_requirements.py``; only whole classes and
 individual tests that no flag can express are skipped here.
 """
 
