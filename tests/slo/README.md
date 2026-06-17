@@ -76,5 +76,6 @@ Emitted via OTLP/HTTP and consumed by the action's default `metrics.yaml`:
 
 `.github/workflows/slo.yml` runs the workload on pull requests labelled `SLO`.
 It builds the current and baseline images, hands them to `ydb-slo-action/init`,
-then publishes a comparison report with `ydb-slo-action/report`. The cluster is
-trimmed to fit a GitHub-hosted runner via `disable_compose_profiles: extra-nodes`.
+then publishes a comparison report with `ydb-slo-action/report`. The workload
+job runs on the `large-runner-sqlalchemy` self-hosted runner with the full YDB
+cluster; the report job runs on `ubuntu-latest`.

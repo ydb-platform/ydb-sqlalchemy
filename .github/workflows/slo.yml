@@ -14,7 +14,7 @@ jobs:
     if: contains(github.event.pull_request.labels.*.name, 'SLO')
 
     name: SLO workload (${{ matrix.workload.name }})
-    runs-on: ubuntu-latest
+    runs-on: "large-runner-sqlalchemy"
 
     strategy:
       fail-fast: false
@@ -117,8 +117,6 @@ jobs:
           workload_baseline_ref: ${{ steps.baseline.outputs.ref }}
           workload_baseline_image: ydb-slo-baseline
           workload_baseline_command: ${{ matrix.workload.command }}
-          # Trim the cluster (drop database-3/4/5) to fit a GitHub-hosted runner.
-          disable_compose_profiles: extra-nodes
 
   report:
     # Runs in the same workflow run as `workload`, so it sees the freshly
