@@ -24,6 +24,8 @@ jobs:
             command: "--read-rps 1000 --write-rps 100"
           - name: orm
             command: "--read-rps 1000 --write-rps 100"
+          - name: shared
+            command: "--read-rps 1000 --write-rps 100"
 
     concurrency:
       group: slo-${{ github.ref }}-${{ matrix.workload.name }}

@@ -6,6 +6,7 @@ definition and an imperatively-mapped ORM class for the ``orm`` workload mode.
 import re
 
 import sqlalchemy as sa
+import ydb
 from sqlalchemy.engine import URL
 from sqlalchemy.orm import registry
 
@@ -45,6 +46,36 @@ def build_engine(endpoint: str, database: str, pool_size: int) -> sa.engine.Engi
         pool_size=pool_size,
         max_overflow=max(4, pool_size),
     )
+
+
+def build_shared_pool_engine(endpoint: str, database: str, pool_size: int):
+    """Engine where all connections share ONE ``ydb.QuerySessionPool`` and driver.
+
+    By default every pooled DBAPI connection builds its own ``ydb.Driver`` plus a
+    ``QuerySessionPool``; passing a shared pool via ``connect_args`` means a
+    single driver and a single set of YDB sessions back the whole engine.
+
+    Returns ``(engine, session_pool, driver)`` so the caller can stop the pool
+    and driver when the workload is done (disposing the engine leaves the shared
+    pool/driver running, since they are owned externally).
+    """
+    match = _ENDPOINT_RE.match(endpoint.strip())
+    if not match:
+        raise ValueError(f"Cannot parse YDB endpoint: {endpoint!r}")
+    ydb_endpoint = f"{match.group('scheme')}://{match.group('host')}:{match.group('port')}"
+    ydb_database = "/" + database.strip().lstrip("/")
+
+    driver = ydb.Driver(endpoint=ydb_endpoint, database=ydb_database)
+    driver.wait(timeout=30, fail_fast=True)
+    session_pool = ydb.QuerySessionPool(driver, size=pool_size)
+
+    engine = sa.create_engine(
+        build_url(endpoint, database),
+        pool_size=pool_size,
+        max_overflow=max(4, pool_size),
+        connect_args={"ydb_session_pool": session_pool},
+    )
+    return engine, session_pool, driver
 
 
 def build_table(
