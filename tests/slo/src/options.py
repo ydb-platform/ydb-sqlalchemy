@@ -1,8 +1,9 @@
 import argparse
 from os import environ
 
+_MODES = ("core", "orm", "shared")
 _DEFAULT_MODE = (environ.get("WORKLOAD_NAME") or "core").strip().lower()
-if _DEFAULT_MODE not in ("core", "orm"):
+if _DEFAULT_MODE not in _MODES:
     _DEFAULT_MODE = "core"
 
 
@@ -12,9 +13,10 @@ def _add_common(parser):
     parser.add_argument("-t", "--table-name", default="slo_sqlalchemy", help="Workload table name")
     parser.add_argument(
         "--mode",
-        choices=("core", "orm"),
+        choices=_MODES,
         default=_DEFAULT_MODE,
-        help="SQLAlchemy layer to exercise (defaults to WORKLOAD_NAME)",
+        help="Access pattern: core (Connection), orm (Session), "
+        "shared (Connection over one shared YDB session pool). Defaults to WORKLOAD_NAME.",
     )
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
 
