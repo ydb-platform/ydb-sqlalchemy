@@ -144,3 +144,23 @@ jobs:
           github_issue: ${{ github.event.pull_request.number }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           github_run_id: ${{ github.run_id }}
+
+  remove-label:
+    # SLO runs once per label: drop the "SLO" label after the run so ordinary
+    # pushes don't re-trigger the (heavy) SLO suite. Re-add the label to re-run.
+    if: ${{ always() && contains(github.event.pull_request.labels.*.name, 'SLO') }}
+
+    name: Remove SLO label
+    needs: [workload, report]
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+
+    steps:
+      - name: Remove SLO label
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api -X DELETE \
+            "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/labels/SLO" \
+            && echo "Removed SLO label" || echo "SLO label already absent"
