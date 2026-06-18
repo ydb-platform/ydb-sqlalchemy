@@ -9,21 +9,25 @@ on regressions.
 
 ## What it does
 
-* **read** — `SELECT * FROM <table> WHERE object_id = :id` for a random id.
-* **write** — `UPSERT INTO <table> (...) VALUES (...)` for a fresh id.
+A reader looks up a row by primary key; a writer adds a new row. Both run in
+parallel from dedicated thread pools.
 
-Both run in parallel from dedicated thread pools. Each operation is a single
-autocommit statement — there is no app-level retry. The dialect runs in
-AUTOCOMMIT by default, so every `execute` already goes through the YDB SDK's
-`retry_operation_sync` inside `ydb-dbapi`; any exception that still surfaces is
-recorded as a real SLO failure.
+Two execution modes (selected by `WORKLOAD_NAME` / `--mode`) exercise the two
+ways real applications use the dialect:
 
-Two execution modes (selected by `WORKLOAD_NAME` / `--mode`):
+| mode  | read path (point lookup)        | write path                                       |
+|-------|---------------------------------|--------------------------------------------------|
+| `core`| `Connection.execute(select())`  | `Connection.execute(upsert())` (bulk KV upsert)  |
+| `orm` | `Session.get(KeyValueRow, id)`  | `Session.add(KeyValueRow(...))` + `commit()` (ORM insert) |
 
-| mode  | read path                       | write path                                  |
-|-------|---------------------------------|---------------------------------------------|
-| `core`| `Connection.execute(select())`  | `Connection.execute(upsert())`              |
-| `orm` | `Session.get(KeyValueRow, id)`  | `Session.execute(upsert())` + `commit()`    |
+Each operation is a single autocommit statement — there is no app-level retry.
+The dialect runs in AUTOCOMMIT by default, so every `execute` already goes
+through the YDB SDK's `retry_operation_sync` inside `ydb-dbapi`; any exception
+that still surfaces is recorded as a real SLO failure.
+
+`core` writes use a monotonic id and UPSERT (idempotent, safe for the shared
+table); `orm` writes use a random id so each `session.add` INSERT is collision-free
+and avoids a hot last partition.
 
 ## Layout
 

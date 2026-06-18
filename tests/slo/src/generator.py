@@ -51,3 +51,18 @@ class RowGenerator:
             payload_double=random.random(),
             payload_timestamp=datetime.now(timezone.utc),
         )
+
+
+def random_row() -> Row:
+    """A row with a random 63-bit id.
+
+    Used for ORM inserts: a random id keeps each ``session.add`` collision-free
+    without cross-thread coordination, and avoids the hot last partition that a
+    monotonically increasing primary key would create in YDB.
+    """
+    return Row(
+        object_id=random.getrandbits(63) + 1,
+        payload_str=_random_string(20, 40),
+        payload_double=random.random(),
+        payload_timestamp=datetime.now(timezone.utc),
+    )

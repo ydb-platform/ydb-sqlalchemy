@@ -37,14 +37,13 @@ def build_url(endpoint: str, database: str) -> URL:
 
 def build_engine(endpoint: str, database: str, pool_size: int) -> sa.engine.Engine:
     url = build_url(endpoint, database)
-    # pool_pre_ping lets the pool transparently discard connections that broke
-    # while a node was down (chaos), instead of handing a dead one to a worker.
+    # No pool_pre_ping: it would add a SELECT 1 round-trip on every checkout.
+    # ydb-dbapi already retries transient errors and re-acquires sessions from
+    # its internal session pool, so broken connections recover without a ping.
     return sa.create_engine(
         url,
         pool_size=pool_size,
         max_overflow=max(4, pool_size),
-        pool_pre_ping=True,
-        pool_recycle=300,
     )
 
 

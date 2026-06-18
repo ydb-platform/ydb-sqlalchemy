@@ -21,13 +21,13 @@ import threading
 import time
 
 import sqlalchemy as sa
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import sessionmaker
 
 from ydb_sqlalchemy import upsert as ydb_upsert
 
-from generator import RowGenerator
+from generator import RowGenerator, random_row
 from metrics import OP_TYPE_READ, OP_TYPE_WRITE, create_metrics
-from models import build_engine, build_table, ensure_mapped
+from models import KeyValueRow, build_engine, build_table, ensure_mapped
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +82,7 @@ class Workload:
         self.args = args
         self.mode = getattr(args, "mode", "core")
         self.table_name = args.table_name
+        self._session_factory = None
 
     # -- schema lifecycle ---------------------------------------------------
 
@@ -151,6 +152,7 @@ class Workload:
         table = build_table(metadata, self.table_name)
         if self.mode == "orm":
             ensure_mapped(table)
+            self._session_factory = sessionmaker(engine)
 
         max_id = self._max_id(engine, table)
         logger.info("Starting '%s' SLO load on %s (max_id=%s)", self.mode, self.table_name, max_id)
@@ -167,7 +169,7 @@ class Workload:
                 threading.Thread(
                     name=f"slo_read_{i}",
                     target=self._reader_loop,
-                    args=(engine, table, read_stmt, metrics, read_limiter, max_id, end_time),
+                    args=(engine, read_stmt, metrics, read_limiter, max_id, end_time),
                 )
             )
         for i in range(args.write_threads):
@@ -208,18 +210,16 @@ class Workload:
 
     # -- per-operation work -------------------------------------------------
 
-    def _reader_loop(self, engine, table, read_stmt, metrics, limiter, max_id, end_time):
-        model = ensure_mapped(table) if self.mode == "orm" else None
-
+    def _reader_loop(self, engine, read_stmt, metrics, limiter, max_id, end_time):
         while time.monotonic() < end_time:
             with limiter:
                 object_id = random.randint(1, max(1, max_id))
 
                 if self.mode == "orm":
-
+                    # Typical ORM read: fetch one mapped entity by primary key.
                     def do_read(oid=object_id):
-                        with Session(engine) as session:
-                            session.get(model, oid)
+                        with self._session_factory() as session:
+                            session.get(KeyValueRow, oid)
 
                 else:
 
@@ -232,16 +232,18 @@ class Workload:
     def _writer_loop(self, engine, table, metrics, limiter, row_generator, end_time):
         while time.monotonic() < end_time:
             with limiter:
-                params = row_generator.get().as_params()
-
                 if self.mode == "orm":
+                    # Typical ORM write: add a new mapped object and commit the
+                    # unit of work (a real INSERT through the session).
+                    row = random_row()
 
-                    def do_write(p=params):
-                        with Session(engine) as session:
-                            session.execute(ydb_upsert(table).values(**p))
+                    def do_write(r=row):
+                        with self._session_factory() as session:
+                            session.add(KeyValueRow(**r.as_params()))
                             session.commit()
 
                 else:
+                    params = row_generator.get().as_params()
 
                     def do_write(p=params):
                         with engine.begin() as conn:
