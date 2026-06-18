@@ -37,17 +37,26 @@ jobs:
           BUILDX_VERSION=0.30.1
           COMPOSE_VERSION=2.40.3
 
-          sudo curl -fLo /usr/local/bin/yq \
+          # Resilient download: retry transient network errors (e.g. curl 28
+          # SSL connection timeout) instead of failing the whole job.
+          dl() {
+            sudo curl -fL \
+              --retry 5 --retry-all-errors --retry-delay 3 \
+              --connect-timeout 30 --max-time 300 \
+              -o "$1" "$2"
+          }
+
+          dl /usr/local/bin/yq \
             "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
           sudo chmod +x /usr/local/bin/yq
 
           sudo mkdir -p /usr/local/lib/docker/cli-plugins
 
-          sudo curl -fLo /usr/local/lib/docker/cli-plugins/docker-buildx \
+          dl /usr/local/lib/docker/cli-plugins/docker-buildx \
             "https://github.com/docker/buildx/releases/download/v${BUILDX_VERSION}/buildx-v${BUILDX_VERSION}.linux-amd64"
           sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-buildx
 
-          sudo curl -fLo /usr/local/lib/docker/cli-plugins/docker-compose \
+          dl /usr/local/lib/docker/cli-plugins/docker-compose \
             "https://github.com/docker/compose/releases/download/v${COMPOSE_VERSION}/docker-compose-linux-x86_64"
           sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 
