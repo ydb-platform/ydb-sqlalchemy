@@ -2,7 +2,7 @@ name: SLO
 
 on:
   pull_request:
-    types: [opened, reopened, synchronize, labeled]
+    types: [labeled]
 
 permissions:
   contents: read
@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   workload:
-    if: contains(github.event.pull_request.labels.*.name, 'SLO')
+    if: github.event.label.name == 'SLO'
 
     name: SLO workload (${{ matrix.workload.name }})
     runs-on: "large-runner-sqlalchemy"
@@ -131,7 +131,7 @@ jobs:
     # Runs in the same workflow run as `workload`, so it sees the freshly
     # uploaded metrics artifacts and can compare current vs baseline and gate
     # the PR. Same-repo PRs have the pull-requests:write token this needs.
-    if: ${{ always() && contains(github.event.pull_request.labels.*.name, 'SLO') }}
+    if: ${{ always() && github.event.label.name == 'SLO' }}
 
     name: SLO report
     needs: workload
@@ -148,7 +148,7 @@ jobs:
   remove-label:
     # SLO runs once per label: drop the "SLO" label after the run so ordinary
     # pushes don't re-trigger the (heavy) SLO suite. Re-add the label to re-run.
-    if: ${{ always() && contains(github.event.pull_request.labels.*.name, 'SLO') }}
+    if: ${{ always() && github.event.label.name == 'SLO' }}
 
     name: Remove SLO label
     needs: [workload, report]
