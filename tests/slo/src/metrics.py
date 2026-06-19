@@ -133,7 +133,7 @@ class OtlpMetrics(BaseMetrics):
         )
         self._retry_attempts_total = self._meter.create_counter(
             name="sdk.retry.attempts.total",
-            description="Total number of attempts (including the first one).",
+            description="Total number of retries (attempts beyond the first one).",
         )
         self._pending = self._meter.create_up_down_counter(
             name="sdk.pending.operations",
@@ -171,7 +171,10 @@ class OtlpMetrics(BaseMetrics):
         base_attrs = {"ref": REF, "operation_type": op_type}
         op_attrs = {**base_attrs, "operation_status": op_status}
 
-        self._retry_attempts_total.add(int(attempts), attributes=base_attrs)
+        # Count retries (attempts beyond the first), not total attempts: this is
+        # exactly 0 when nothing was retried, so the *_retry_attempts metric is a
+        # clean 0 for autocommit workloads instead of PromQL noise around zero.
+        self._retry_attempts_total.add(max(int(attempts) - 1, 0), attributes=base_attrs)
         self._pending.add(-1, attributes=base_attrs)
         self._operations_total.add(1, attributes=op_attrs)
 

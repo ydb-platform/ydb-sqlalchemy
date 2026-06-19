@@ -1,7 +1,7 @@
 import argparse
 from os import environ
 
-_MODES = ("core", "orm")
+_MODES = ("core", "orm", "tx")
 _DEFAULT_MODE = (environ.get("WORKLOAD_NAME") or "core").strip().lower()
 if _DEFAULT_MODE not in _MODES:
     _DEFAULT_MODE = "core"
@@ -15,7 +15,8 @@ def _add_common(parser):
         "--mode",
         choices=_MODES,
         default=_DEFAULT_MODE,
-        help="Access pattern: core (Connection) or orm (Session). Defaults to WORKLOAD_NAME.",
+        help="Access pattern: core (Connection), orm (Session) or "
+        "tx (interactive read-modify-write transactions). Defaults to WORKLOAD_NAME.",
     )
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
 
