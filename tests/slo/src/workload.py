@@ -27,7 +27,7 @@ from ydb_sqlalchemy import upsert as ydb_upsert
 
 from generator import RowGenerator, random_row
 from metrics import OP_TYPE_READ, OP_TYPE_WRITE, create_metrics
-from models import KeyValueRow, build_engine, build_shared_pool_engine, build_table, ensure_mapped
+from models import KeyValueRow, build_engine, build_table, ensure_mapped
 
 logger = logging.getLogger(__name__)
 
@@ -146,12 +146,7 @@ class Workload:
         args = self.args
         metrics = create_metrics(args.otlp_endpoint)
         pool_size = args.read_threads + args.write_threads + 2
-        shared_handles = None
-        if self.mode == "shared":
-            engine, session_pool, driver = build_shared_pool_engine(args.endpoint, args.database, pool_size)
-            shared_handles = (session_pool, driver)
-        else:
-            engine = build_engine(args.endpoint, args.database, pool_size=pool_size)
+        engine = build_engine(args.endpoint, args.database, pool_size=pool_size)
 
         metadata = sa.MetaData()
         table = build_table(metadata, self.table_name)
@@ -202,10 +197,6 @@ class Workload:
         metrics.push()
         metrics.reset()
         engine.dispose()
-        if shared_handles:
-            session_pool, driver = shared_handles
-            session_pool.stop()
-            driver.stop()
         logger.info("Finished '%s' SLO load", self.mode)
 
     def _max_id(self, engine, table) -> int:

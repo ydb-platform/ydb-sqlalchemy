@@ -1,7 +1,7 @@
 import argparse
 from os import environ
 
-_MODES = ("core", "orm", "shared")
+_MODES = ("core", "orm")
 _DEFAULT_MODE = (environ.get("WORKLOAD_NAME") or "core").strip().lower()
 if _DEFAULT_MODE not in _MODES:
     _DEFAULT_MODE = "core"
@@ -15,8 +15,7 @@ def _add_common(parser):
         "--mode",
         choices=_MODES,
         default=_DEFAULT_MODE,
-        help="Access pattern: core (Connection), orm (Session), "
-        "shared (Connection over one shared YDB session pool). Defaults to WORKLOAD_NAME.",
+        help="Access pattern: core (Connection) or orm (Session). Defaults to WORKLOAD_NAME.",
     )
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
 
