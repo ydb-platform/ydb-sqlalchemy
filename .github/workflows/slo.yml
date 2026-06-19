@@ -22,8 +22,24 @@ jobs:
         workload:
           - name: core
             command: "--read-rps 1000 --write-rps 100"
+            thresholds: ""
           - name: orm
             command: "--read-rps 1000 --write-rps 100"
+            thresholds: ""
+          - name: tx
+            command: "--read-rps 1000 --write-rps 100"
+            # Interactive transactions legitimately retry (chaos / lock conflicts),
+            # so retry_attempts is informational for this scenario only.
+            thresholds: |
+              metrics:
+                - name: read_retry_attempts
+                  direction: lower_is_better
+                  warning_change_percent: 100000000
+                  critical_change_percent: 100000000
+                - name: write_retry_attempts
+                  direction: lower_is_better
+                  warning_change_percent: 100000000
+                  critical_change_percent: 100000000
 
     concurrency:
       group: slo-${{ github.ref }}-${{ matrix.workload.name }}
@@ -113,7 +129,7 @@ jobs:
             "$GITHUB_WORKSPACE/baseline"
 
       - name: Run SLO workload
-        uses: ydb-platform/ydb-slo-action/init@v2
+        uses: ydb-platform/ydb-slo-action/init@feat/per-scenario-thresholds
         timeout-minutes: 30
         with:
           github_issue: ${{ github.event.pull_request.number }}
@@ -126,6 +142,18 @@ jobs:
           workload_baseline_ref: ${{ steps.baseline.outputs.ref }}
           workload_baseline_image: ydb-slo-baseline
           workload_baseline_command: ${{ matrix.workload.command }}
+          # The workload emits only real retries (attempts beyond the first), so
+          # count them directly instead of the default "attempts - operations"
+          # (which would read 0 for every scenario under the new emission).
+          metrics_yaml: |
+            metrics:
+              - name: read_retry_attempts
+                query: |
+                  sum by(ref) (increase(sdk_retry_attempts_total{operation_type="read"}[5s]))
+              - name: write_retry_attempts
+                query: |
+                  sum by(ref) (increase(sdk_retry_attempts_total{operation_type="write"}[5s]))
+          thresholds_yaml: ${{ matrix.workload.thresholds }}
 
   report:
     # Runs in the same workflow run as `workload`, so it sees the freshly
@@ -139,7 +167,7 @@ jobs:
 
     steps:
       - name: Publish SLO report
-        uses: ydb-platform/ydb-slo-action/report@v2
+        uses: ydb-platform/ydb-slo-action/report@feat/per-scenario-thresholds
         with:
           github_issue: ${{ github.event.pull_request.number }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
