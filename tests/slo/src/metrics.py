@@ -8,7 +8,6 @@ ydb-slo-action's default ``metrics.yaml``:
   * ``sdk_operations_total``            (counter, labels: ref, operation_type, operation_status)
   * ``sdk_operations_success_total``    (counter)
   * ``sdk_operations_failure_total``    (counter)
-  * ``sdk_retry_attempts_total``        (counter, labels: ref, operation_type)
   * ``sdk_operation_latency_p50_seconds`` / ``_p95_`` / ``_p99_`` (gauge)
 
 Latency percentiles are computed client-side per push window via HdrHistogram
@@ -131,10 +130,11 @@ class OtlpMetrics(BaseMetrics):
             name="sdk.operations.failure.total",
             description="Total number of failed operations.",
         )
-        self._retry_attempts_total = self._meter.create_counter(
-            name="sdk.retry.attempts.total",
-            description="Total number of attempts (including the first one).",
-        )
+        # No sdk.retry.attempts.total: this workload has no app-level retry, so
+        # every operation is a single attempt and the counter would just mirror
+        # sdk.operations.total. The action's *_retry_attempts metric (which is
+        # increase(retry) - increase(ops)) would then be pure PromQL noise around
+        # zero and produce spurious threshold violations, so we don't emit it.
         self._pending = self._meter.create_up_down_counter(
             name="sdk.pending.operations",
             description="Current number of in-flight operations.",
@@ -171,7 +171,6 @@ class OtlpMetrics(BaseMetrics):
         base_attrs = {"ref": REF, "operation_type": op_type}
         op_attrs = {**base_attrs, "operation_status": op_status}
 
-        self._retry_attempts_total.add(int(attempts), attributes=base_attrs)
         self._pending.add(-1, attributes=base_attrs)
         self._operations_total.add(1, attributes=op_attrs)
 
