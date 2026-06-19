@@ -19,11 +19,6 @@ ways real applications use the dialect:
 |---------|---------------------------------|--------------------------------------------------|
 | `core`  | `Connection.execute(select())`  | `Connection.execute(upsert())` (bulk KV upsert)  |
 | `orm`   | `Session.get(KeyValueRow, id)`  | `Session.add(KeyValueRow(...))` + `commit()` (ORM insert) |
-| `shared`| same as `core`                  | same as `core`                                   |
-
-`shared` uses the same Core access as `core` but builds the engine with one
-`ydb.QuerySessionPool` shared across all connections (`connect_args={"ydb_session_pool": ...}`),
-instead of each pooled connection spinning up its own driver and session pool.
 
 Each operation is a single autocommit statement — there is no app-level retry.
 The dialect runs in AUTOCOMMIT by default, so every `execute` already goes
