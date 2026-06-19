@@ -9,10 +9,10 @@ supported, selected by ``WORKLOAD_NAME`` / ``--mode``:
   * ``core`` — SQLAlchemy Core (``Connection.execute``)
   * ``orm``  — SQLAlchemy ORM (``Session`` + imperatively mapped entity)
 
-Each operation is a single autocommit statement. The dialect runs in AUTOCOMMIT
-by default, so every ``execute`` already goes through the YDB SDK's
-``retry_operation_sync`` inside ydb-dbapi — there is no app-level retry here, and
-a surfaced exception is recorded as a genuine SLO failure.
+Each operation is wrapped in ``ydb_sqlalchemy.retry_operation``, which unwraps a
+SQLAlchemy error back to the underlying ``ydb.Error`` and retries the transient
+ones through the SDK's retry policy. We count the attempts (so ``retry_attempts``
+is a real signal) and record the final exception, if any, as an SLO failure.
 """
 
 import logging
@@ -23,6 +23,7 @@ import time
 import sqlalchemy as sa
 from sqlalchemy.orm import sessionmaker
 
+from ydb_sqlalchemy import retry_ydb_operation
 from ydb_sqlalchemy import upsert as ydb_upsert
 
 from generator import RowGenerator, random_row
@@ -61,20 +62,34 @@ def _limiter_for_rps(rps: int) -> SyncRateLimiter:
     return SyncRateLimiter(0.0 if rps <= 0 else 1.0 / rps)
 
 
-def _measure(metrics, op_type, fn):
-    """Run a single operation, timing it and recording success/failure.
+def _measure(metrics, op_type, fn, *, retry=False, idempotent=False):
+    """Time ``fn``, count its attempts and record the outcome.
 
-    No app-level retry: in AUTOCOMMIT the ydb-dbapi layer already retries
-    transient YDB errors, so any exception that reaches here is a real failure.
-    Exceptions are recorded (not re-raised) to keep the worker thread alive.
+    Autocommit single statements (``core``/``orm``) are already retried inside
+    ydb-dbapi, so they run once (``retry=False``). Interactive transactions
+    (``tx``) are not, so they run under ``ydb_sqlalchemy.retry_ydb_operation``,
+    which translates the SQLAlchemy error back to the underlying ``ydb.Error``
+    and retries the transient ones — and we report how many attempts it took, so
+    ``retry_attempts`` is a real signal. The final exception, if any, is recorded
+    as an SLO failure but not re-raised, so the worker thread keeps going.
     """
     start = metrics.start(op_type)
+    attempts = 0
     error = None
+
+    def counted():
+        nonlocal attempts
+        attempts += 1
+        return fn()
+
     try:
-        fn()
-    except Exception as err:  # noqa: BLE001 - count as a failed SLO op, keep going
+        if retry:
+            retry_ydb_operation(counted, idempotent=idempotent)
+        else:
+            counted()
+    except Exception as err:  # noqa: BLE001 - record as a failed SLO op, keep going
         error = err
-    metrics.stop(op_type, start, attempts=1, error=error)
+    metrics.stop(op_type, start, attempts=max(attempts, 1), error=error)
 
 
 class Workload:
@@ -177,7 +192,7 @@ class Workload:
                 threading.Thread(
                     name=f"slo_write_{i}",
                     target=self._writer_loop,
-                    args=(engine, table, metrics, write_limiter, row_generator, end_time),
+                    args=(engine, table, metrics, write_limiter, row_generator, max_id, end_time),
                 )
             )
         metrics_thread = threading.Thread(
@@ -221,15 +236,26 @@ class Workload:
                         with self._session_factory() as session:
                             session.get(KeyValueRow, oid)
 
-                else:
+                    _measure(metrics, OP_TYPE_READ, do_read)
+
+                elif self.mode == "tx":
+                    # Read inside an interactive (SERIALIZABLE) transaction.
+                    def do_read(oid=object_id):
+                        with engine.connect().execution_options(isolation_level="SERIALIZABLE") as conn:
+                            with conn.begin():
+                                conn.execute(read_stmt, {"object_id": oid}).fetchall()
+
+                    _measure(metrics, OP_TYPE_READ, do_read, retry=True, idempotent=True)
+
+                else:  # core
 
                     def do_read(oid=object_id):
                         with engine.connect() as conn:
                             conn.execute(read_stmt, {"object_id": oid}).fetchall()
 
-                _measure(metrics, OP_TYPE_READ, do_read)
+                    _measure(metrics, OP_TYPE_READ, do_read)
 
-    def _writer_loop(self, engine, table, metrics, limiter, row_generator, end_time):
+    def _writer_loop(self, engine, table, metrics, limiter, row_generator, max_id, end_time):
         while time.monotonic() < end_time:
             with limiter:
                 if self.mode == "orm":
@@ -242,14 +268,36 @@ class Workload:
                             session.add(KeyValueRow(**r.as_params()))
                             session.commit()
 
-                else:
+                    _measure(metrics, OP_TYPE_WRITE, do_write)
+
+                elif self.mode == "tx":
+                    # Read-modify-write in one interactive (SERIALIZABLE) transaction:
+                    # exactly where the dialect's retry helper is needed (ydb-dbapi
+                    # does not retry an interactive transaction on its own).
+                    object_id = random.randint(1, max(1, max_id))
+
+                    def do_write(oid=object_id):
+                        with engine.connect().execution_options(isolation_level="SERIALIZABLE") as conn:
+                            with conn.begin():
+                                current = conn.execute(
+                                    sa.select(table.c.payload_double).where(table.c.object_id == oid)
+                                ).scalar()
+                                conn.execute(
+                                    ydb_upsert(table).values(object_id=oid, payload_double=(current or 0.0) + 1.0)
+                                )
+
+                    # An increment is not idempotent, so only the pre-commit transient
+                    # errors (the SDK's default, idempotent=False) are retried.
+                    _measure(metrics, OP_TYPE_WRITE, do_write, retry=True, idempotent=False)
+
+                else:  # core
                     params = row_generator.get().as_params()
 
                     def do_write(p=params):
                         with engine.begin() as conn:
                             conn.execute(ydb_upsert(table).values(**p))
 
-                _measure(metrics, OP_TYPE_WRITE, do_write)
+                    _measure(metrics, OP_TYPE_WRITE, do_write)
 
     @staticmethod
     def _metrics_loop(metrics, end_time, report_period_ms):
