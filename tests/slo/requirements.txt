@@ -1,0 +1,9 @@
+# Extra deps for the SLO workload runner.
+# SQLAlchemy, ydb and ydb-dbapi come from installing the ydb-sqlalchemy dialect.
+
+hdrhistogram==0.10.3
+
+# OpenTelemetry (OTLP/HTTP exporter). 1.39.x requires Python >= 3.9.
+opentelemetry-api==1.39.1
+opentelemetry-sdk==1.39.1
+opentelemetry-exporter-otlp-proto-http==1.39.1

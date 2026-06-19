@@ -1,0 +1,194 @@
+name: SLO
+
+on:
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+jobs:
+  workload:
+    if: github.event.label.name == 'SLO'
+
+    name: SLO workload (${{ matrix.workload.name }})
+    runs-on: "large-runner-sqlalchemy"
+
+    strategy:
+      fail-fast: false
+      matrix:
+        workload:
+          - name: core
+            command: "--read-rps 1000 --write-rps 100"
+            thresholds: ""
+          - name: orm
+            command: "--read-rps 1000 --write-rps 100"
+            thresholds: ""
+          - name: tx
+            command: "--read-rps 1000 --write-rps 100"
+            # Interactive transactions legitimately retry (chaos / lock conflicts),
+            # so retry_attempts is informational for this scenario only.
+            thresholds: |
+              metrics:
+                - name: read_retry_attempts
+                  direction: lower_is_better
+                  warning_change_percent: 100000000
+                  critical_change_percent: 100000000
+                - name: write_retry_attempts
+                  direction: lower_is_better
+                  warning_change_percent: 100000000
+                  critical_change_percent: 100000000
+
+    concurrency:
+      group: slo-${{ github.ref }}-${{ matrix.workload.name }}
+      cancel-in-progress: true
+
+    steps:
+      - name: Install tooling
+        run: |
+          set -euxo pipefail
+          YQ_VERSION=v4.48.2
+          BUILDX_VERSION=0.30.1
+          COMPOSE_VERSION=2.40.3
+
+          # Resilient download: retry transient network errors (e.g. curl 28
+          # SSL connection timeout) instead of failing the whole job.
+          dl() {
+            sudo curl -fL \
+              --retry 5 --retry-all-errors --retry-delay 3 \
+              --connect-timeout 30 --max-time 300 \
+              -o "$1" "$2"
+          }
+
+          dl /usr/local/bin/yq \
+            "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+          sudo chmod +x /usr/local/bin/yq
+
+          sudo mkdir -p /usr/local/lib/docker/cli-plugins
+
+          dl /usr/local/lib/docker/cli-plugins/docker-buildx \
+            "https://github.com/docker/buildx/releases/download/v${BUILDX_VERSION}/buildx-v${BUILDX_VERSION}.linux-amd64"
+          sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-buildx
+
+          dl /usr/local/lib/docker/cli-plugins/docker-compose \
+            "https://github.com/docker/compose/releases/download/v${COMPOSE_VERSION}/docker-compose-linux-x86_64"
+          sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+          yq --version
+          docker --version
+          docker buildx version
+          docker compose version
+
+      - name: Checkout current dialect version
+        uses: actions/checkout@v5
+        with:
+          path: current
+          fetch-depth: 0
+
+      - name: Determine baseline commit
+        id: baseline
+        working-directory: current
+        run: |
+          set -euo pipefail
+          BASELINE=$(git merge-base HEAD origin/main)
+          echo "sha=${BASELINE}" >> "$GITHUB_OUTPUT"
+          if [ "$(git rev-parse origin/main)" = "${BASELINE}" ]; then
+            echo "ref=main" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=${BASELINE:0:7}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout baseline dialect version
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.baseline.outputs.sha }}
+          path: baseline
+          fetch-depth: 1
+
+      - name: Build workload images (current + baseline)
+        run: |
+          set -euxo pipefail
+
+          # Current: PR dialect + PR workload runner.
+          docker build \
+            -f "$GITHUB_WORKSPACE/current/tests/slo/Dockerfile" \
+            -t "ydb-slo-current" \
+            "$GITHUB_WORKSPACE/current"
+
+          # Baseline: baseline dialect with the CURRENT workload runner so the
+          # runner-side contract (entrypoint, metric names) is identical for both.
+          # main has no tests/ dir, so create the parent before copying the runner.
+          rm -rf "$GITHUB_WORKSPACE/baseline/tests/slo"
+          mkdir -p "$GITHUB_WORKSPACE/baseline/tests"
+          cp -r "$GITHUB_WORKSPACE/current/tests/slo" "$GITHUB_WORKSPACE/baseline/tests/slo"
+          docker build \
+            -f "$GITHUB_WORKSPACE/baseline/tests/slo/Dockerfile" \
+            -t "ydb-slo-baseline" \
+            "$GITHUB_WORKSPACE/baseline"
+
+      - name: Run SLO workload
+        uses: ydb-platform/ydb-slo-action/init@feat/per-scenario-thresholds
+        timeout-minutes: 30
+        with:
+          github_issue: ${{ github.event.pull_request.number }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          workload_name: ${{ matrix.workload.name }}
+          workload_duration: "600"
+          workload_current_ref: ${{ github.head_ref || github.ref_name }}
+          workload_current_image: ydb-slo-current
+          workload_current_command: ${{ matrix.workload.command }}
+          workload_baseline_ref: ${{ steps.baseline.outputs.ref }}
+          workload_baseline_image: ydb-slo-baseline
+          workload_baseline_command: ${{ matrix.workload.command }}
+          # The workload emits only real retries (attempts beyond the first), so
+          # count them directly instead of the default "attempts - operations"
+          # (which would read 0 for every scenario under the new emission).
+          metrics_yaml: |
+            metrics:
+              - name: read_retry_attempts
+                query: |
+                  sum by(ref) (increase(sdk_retry_attempts_total{operation_type="read"}[5s]))
+              - name: write_retry_attempts
+                query: |
+                  sum by(ref) (increase(sdk_retry_attempts_total{operation_type="write"}[5s]))
+          thresholds_yaml: ${{ matrix.workload.thresholds }}
+
+  report:
+    # Runs in the same workflow run as `workload`, so it sees the freshly
+    # uploaded metrics artifacts and can compare current vs baseline and gate
+    # the PR. Same-repo PRs have the pull-requests:write token this needs.
+    if: ${{ always() && github.event.label.name == 'SLO' }}
+
+    name: SLO report
+    needs: workload
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Publish SLO report
+        uses: ydb-platform/ydb-slo-action/report@feat/per-scenario-thresholds
+        with:
+          github_issue: ${{ github.event.pull_request.number }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_run_id: ${{ github.run_id }}
+
+  remove-label:
+    # SLO runs once per label: drop the "SLO" label after the run so ordinary
+    # pushes don't re-trigger the (heavy) SLO suite. Re-add the label to re-run.
+    if: ${{ always() && github.event.label.name == 'SLO' }}
+
+    name: Remove SLO label
+    needs: [workload, report]
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+
+    steps:
+      - name: Remove SLO label
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api -X DELETE \
+            "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/labels/SLO" \
+            && echo "Removed SLO label" || echo "SLO label already absent"
