@@ -73,8 +73,11 @@ Emitted via OTLP/HTTP and consumed by the action's default `metrics.yaml`:
 | `sdk_operations_total`              | counter | `ref`, `operation_type`, `operation_status` |
 | `sdk_operations_success_total`      | counter | `ref`, `operation_type`                  |
 | `sdk_operations_failure_total`      | counter | `ref`, `operation_type`                  |
-| `sdk_retry_attempts_total`          | counter | `ref`, `operation_type`                  |
 | `sdk_operation_latency_p{50,95,99}_seconds` | gauge | `ref`, `operation_type`, `operation_status` |
+
+The action's default `*_retry_attempts` metrics stay empty: this workload has no
+app-level retry (transient errors are retried inside `ydb-dbapi`), so it does not
+emit `sdk_retry_attempts_total`.
 
 ## CI
 
