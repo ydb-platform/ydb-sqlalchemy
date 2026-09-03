@@ -4,6 +4,8 @@ greenlet
 sqlalchemy==2.0.7
 ydb >= 3.18.8
 ydb-dbapi >= 0.1.1
+# 1.14 added DefaultImpl.version_table_impl, which ydb_sqlalchemy.alembic overrides
+alembic >= 1.14
 requests<2.29
 pytest==7.2.2
 docker==6.0.1

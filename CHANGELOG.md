@@ -1,3 +1,11 @@
+## Unreleased ##
+* Ship the Alembic integration as `ydb_sqlalchemy.alembic`, so `env.py` no longer has to
+  define its own `DefaultImpl` subclass or override the private `MigrationContext._version`
+* Fix `AttributeError` when binding parameters for a statement built on `sa.table()`/`sa.column()`,
+  which broke `alembic.op.bulk_insert()`
+* Cover Alembic with integration tests: version table, upgrade/downgrade, operations,
+  autogenerate diffs and the unsupported-operation limits
+
 ## 0.1.22 ##
 * Ignore table schema in reflection and SQL compilation
 
