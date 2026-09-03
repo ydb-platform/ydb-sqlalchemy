@@ -13,7 +13,108 @@ Alembic is SQLAlchemy's database migration tool that allows you to:
 - Rollback to previous schema versions
 - Generate migration scripts automatically
 
-YDB SQLAlchemy provides full Alembic integration with some YDB-specific considerations.
+Support Status
+--------------
+
+Everything marked *supported* below is covered by an integration test in
+``test/test_alembic.py`` and runs on every commit. Everything marked
+*not supported* is likewise asserted by a test, so if a future YDB release
+lifts a restriction the test starts failing and this table gets updated.
+
+Commands
+~~~~~~~~
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 20 50
+
+   * - Command
+     - Status
+     - Notes
+   * - ``upgrade`` (``head``, a revision, ``+1``)
+     - Supported
+     - Re-running at head is a no-op
+   * - ``downgrade`` (``-1``, a revision, ``base``)
+     - Supported
+     -
+   * - ``stamp``
+     - Supported
+     - Records the revision without running it
+   * - ``current``, ``history``
+     - Supported
+     -
+   * - ``revision --autogenerate``
+     - Supported
+     - See the operations table for what the generated script may contain
+   * - ``upgrade --sql`` (offline mode)
+     - Not covered
+     - Untested; no claim is made either way
+
+Operations inside a revision
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 20 50
+
+   * - Operation
+     - Status
+     - Notes
+   * - ``create_table``
+     - Supported
+     - Needs a primary key; no foreign keys
+   * - ``drop_table``
+     - Supported
+     -
+   * - ``rename_table``
+     - Supported
+     -
+   * - ``add_column``
+     - Supported
+     - The new column is always nullable
+   * - ``drop_column``
+     - Supported
+     -
+   * - ``create_index`` / ``drop_index``
+     - Supported
+     - ``unique=True`` works on non-key columns
+   * - ``bulk_insert``
+     - Supported
+     -
+   * - ``execute``
+     - Supported
+     - Used for data migrations
+   * - ``alter_column``
+     - **Not supported**
+     - YDB has no ``ALTER COLUMN``, in any form
+   * - Foreign key constraints
+     - **Not supported**
+     - YDB has no foreign keys
+   * - Changing a primary key
+     - **Not supported**
+     - Create a new table, copy, drop, rename
+
+Autogenerate
+~~~~~~~~~~~~
+
+Detects added and removed tables, added and removed columns, and added
+indexes, and produces an empty diff when the model matches the database.
+Because it cannot emit ``alter_column``, a changed column type or nullability
+has to be resolved by hand.
+
+Autogenerate compares against every table in the database, so scope it with
+``include_name``/``include_object`` in ``env.py`` if the database holds tables
+outside your model.
+
+Other limits
+~~~~~~~~~~~~
+
+- **Branched history is not supported.** The version table can only hold one
+  row, so a second head fails with a constraint violation. Keep the history
+  linear.
+- **Migrations are not atomic.** YDB cannot run schema operations in a
+  transaction, so a revision that fails part way through leaves the schema
+  partly migrated. Keep revisions small.
 
 Installation
 ------------
@@ -276,6 +377,11 @@ Adding a New Table
 
 .. code-block:: python
 
+YDB has no foreign keys, so a revision can only declare the column and, if the
+lookup needs it, a secondary index:
+
+.. code-block:: python
+
    def upgrade() -> None:
        op.create_table('posts',
            sa.Column('id', UInt64(), nullable=False),
@@ -284,8 +390,8 @@ Adding a New Table
            sa.Column('content', sa.Text(), nullable=True),
            sa.Column('created_at', sa.DateTime(), nullable=False),
            sa.PrimaryKeyConstraint('id'),
-           sa.ForeignKeyConstraint(['user_id'], ['users.id'])
        )
+       op.create_index('ix_posts_user_id', 'posts', ['user_id'])
 
    def downgrade() -> None:
        op.drop_table('posts')

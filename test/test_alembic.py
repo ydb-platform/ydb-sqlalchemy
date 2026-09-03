@@ -403,6 +403,31 @@ class TestOperations(TestBase):
             rows = conn.execute(sa.text(f"SELECT id, name FROM `{table_name}` ORDER BY id")).fetchall()
         assert rows == [(1, "a"), (2, None)]
 
+    def test_create_unique_index_on_non_key_column(self, migration_ctx, engine, table_name):
+        self._create(migration_ctx, table_name)
+        index_name = f"ix_{table_name}_uniq"
+
+        migration_ctx.create_index(index_name, table_name, ["name"], unique=True)
+
+        with engine.connect() as conn:
+            assert [i["name"] for i in sa.inspect(conn).get_indexes(table_name)] == [index_name]
+
+    def test_execute_runs_a_data_migration(self, migration_ctx, engine, table_name):
+        """The data-migration shape ``docs/migrations.rst`` documents."""
+        self._create(migration_ctx, table_name)
+        lightweight = sa.table(
+            table_name,
+            sa.column("id", sa.Integer),
+            sa.column("name", sa.Unicode),
+        )
+        migration_ctx.bulk_insert(lightweight, [{"id": 1, "name": "old"}, {"id": 2, "name": "old"}])
+
+        migration_ctx.execute(lightweight.update().values(name="new"))
+
+        with engine.connect() as conn:
+            rows = conn.execute(sa.text(f"SELECT name FROM `{table_name}`")).fetchall()
+        assert [r[0] for r in rows] == ["new", "new"]
+
 
 class TestUnsupportedOperations(TestBase):
     """YDB limitations that migrations have to be written around.
@@ -450,6 +475,37 @@ class TestUnsupportedOperations(TestBase):
                 existing_type=sa.Integer(),
                 nullable=False,
             )
+
+    def test_foreign_key_is_rejected(self, migration_ctx, engine, table_name):
+        """YDB has no foreign keys, so a referencing table cannot be created."""
+        child = f"{table_name}_child"
+        try:
+            with pytest.raises(sa.exc.DatabaseError):
+                migration_ctx.create_table(
+                    child,
+                    sa.Column("id", sa.Integer, primary_key=True),
+                    sa.Column("parent_id", sa.Integer),
+                    sa.ForeignKeyConstraint(["parent_id"], [f"{table_name}.id"]),
+                )
+        finally:
+            drop_tables(engine, child)
+
+    def test_second_head_is_rejected(self, alembic_env, engine):
+        """Branched history needs a second version row, which cannot exist.
+
+        The version table's primary key is a surrogate column that Alembic
+        never populates, so every row collides on the same ``NULL`` key.
+        """
+        from alembic.runtime.migration import HeadMaintainer
+
+        alembic_env.stamp("head")
+        with engine.connect() as conn:
+            ctx = MigrationContext.configure(conn, opts={"version_table": alembic_env.version_table})
+            heads = HeadMaintainer(ctx, [])
+            heads._insert_version("aaaaaaaaaaaa")
+
+            with pytest.raises(sa.exc.DatabaseError):
+                heads._insert_version("bbbbbbbbbbbb")
 
 
 class TestYdbTypes(TestBase):
