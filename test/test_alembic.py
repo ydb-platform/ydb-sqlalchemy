@@ -403,14 +403,37 @@ class TestOperations(TestBase):
             rows = conn.execute(sa.text(f"SELECT id, name FROM `{table_name}` ORDER BY id")).fetchall()
         assert rows == [(1, "a"), (2, None)]
 
-    def test_create_unique_index_on_non_key_column(self, migration_ctx, engine, table_name):
+    def test_create_index_unique_is_not_enforced(self, migration_ctx, engine, table_name):
+        """``unique=True`` currently yields an index that does not enforce it.
+
+        The dialect compiles the index without ``UNIQUE``, emitting
+        ``ADD INDEX ... GLOBAL SYNC``, and reflection reports ``unique: False``
+        even for an index created as ``GLOBAL UNIQUE SYNC``. YDB itself
+        supports unique indexes and rejects duplicates with ``Conflict with
+        existing key``, so this is a dialect gap, not a YDB limitation.
+
+        The behaviour is pinned here so that fixing the dialect surfaces as a
+        failure and this test, and the support table in the docs, get updated.
+        """
         self._create(migration_ctx, table_name)
         index_name = f"ix_{table_name}_uniq"
 
         migration_ctx.create_index(index_name, table_name, ["name"], unique=True)
 
         with engine.connect() as conn:
-            assert [i["name"] for i in sa.inspect(conn).get_indexes(table_name)] == [index_name]
+            indexes = sa.inspect(conn).get_indexes(table_name)
+        assert [i["name"] for i in indexes] == [index_name]
+        assert indexes[0]["unique"] is False
+
+        with engine.connect() as conn:
+            conn.execute(sa.text(f"UPSERT INTO `{table_name}` (id, name) VALUES (1, 'dup')"))
+            conn.commit()
+        with engine.connect() as conn:
+            conn.execute(sa.text(f"UPSERT INTO `{table_name}` (id, name) VALUES (2, 'dup')"))
+            conn.commit()
+        with engine.connect() as conn:
+            rows = conn.execute(sa.text(f"SELECT name FROM `{table_name}` WHERE name = 'dup'")).fetchall()
+        assert len(rows) == 2, "the duplicate would be rejected if the index were unique"
 
     def test_alter_column_can_relax_not_null(self, migration_ctx, engine, table_name):
         """The one ``alter_column`` change YDB accepts, as ``DROP NOT NULL``."""

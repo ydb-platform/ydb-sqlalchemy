@@ -81,7 +81,7 @@ Operations inside a revision
      -
    * - ``create_index`` / ``drop_index``
      - Supported
-     - ``unique=True`` works on non-key columns
+     - But see the note on ``unique`` below
    * - ``bulk_insert``
      - Supported
      -
@@ -119,6 +119,12 @@ outside your model.
 Other limits
 ~~~~~~~~~~~~
 
+- **Unique indexes are not actually unique.** ``create_index(unique=True)``
+  compiles without ``UNIQUE``, so the resulting index does not enforce
+  uniqueness, and reflection reports ``unique: False`` even for an index that
+  is unique. YDB supports unique indexes; this is a gap in the dialect, and
+  autogenerate cannot converge on a model that declares one. Do not rely on
+  ``unique=True`` in a migration until the dialect emits and reflects it.
 - **Branched history is not supported.** The version table can only hold one
   row, so a second head fails with a constraint violation. Keep the history
   linear.
