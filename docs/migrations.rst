@@ -83,10 +83,16 @@ Operations inside a revision
      -
    * - ``execute``
      - Supported
-     - Used for data migrations
-   * - ``alter_column``
+     - Raw DDL must be wrapped in ``sa.schema.DDL``
+   * - ``alter_column`` (``nullable=True``)
+     - Supported
+     - Maps onto YDB's ``DROP NOT NULL``
+   * - ``alter_column`` (``nullable=False``)
      - **Not supported**
-     - YDB has no ``ALTER COLUMN``, in any form
+     - YDB: ``SET NOT NULL is currently not supported``
+   * - ``alter_column`` (``type_=``)
+     - **Not supported**
+     - YDB's ``ALTER COLUMN`` changes options, not types
    * - Foreign key constraints
      - **Not supported**
      - YDB has no foreign keys
@@ -99,8 +105,8 @@ Autogenerate
 
 Detects added and removed tables, added and removed columns, and added
 indexes, and produces an empty diff when the model matches the database.
-Because it cannot emit ``alter_column``, a changed column type or nullability
-has to be resolved by hand.
+A changed column type has to be resolved by hand, since the ``alter_column``
+autogenerate would emit for it is not executable on YDB.
 
 Autogenerate compares against every table in the database, so scope it with
 ``include_name``/``include_object`` in ``env.py`` if the database holds tables
@@ -345,9 +351,9 @@ Adding a Column
 Modifying a Column
 ~~~~~~~~~~~~~~~~~~
 
-``op.alter_column()`` is not usable on YDB -- see `Column Alteration Is Not
-Supported`_. Replace a column by adding the replacement, copying the data and
-dropping the original:
+``op.alter_column()`` on YDB can only relax nullability, not change a type --
+see `What alter_column Can Change`_. Replace a column by adding the
+replacement, copying the data and dropping the original:
 
 .. code-block:: python
 
@@ -417,37 +423,61 @@ YDB doesn't support modifying primary key columns. Plan your primary keys carefu
    # 3. Drop old table
    # 4. Rename new table
 
-.. _Column Alteration Is Not Supported:
+.. _What alter_column Can Change:
 
-Column Alteration Is Not Supported
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+What ``alter_column`` Can Change
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-YDB has no ``ALTER TABLE ... ALTER COLUMN``, so ``op.alter_column()`` fails for
-every kind of change -- including widening a string, which other databases
-accept:
+YDB's `ALTER COLUMN <https://ydb.tech/docs/en/yql/reference/syntax/alter_table/columns>`_
+changes column *options* -- it can drop ``NOT NULL`` and set ``FAMILY``,
+``DEFAULT`` or ``COMPRESSION``. It cannot change a column's type. Of the
+changes Alembic can express, only relaxing nullability goes through.
+
+Relaxing ``NOT NULL`` works, because it maps onto ``DROP NOT NULL``:
 
 .. code-block:: python
 
-   # All of these raise: no viable alternative at input 'ALTER COLUMN'
    op.alter_column('users', 'username',
                   existing_type=sa.Unicode(50),
-                  type_=sa.Unicode(100))
+                  nullable=True)  # Works
 
-   op.alter_column('users', 'id',
-                  existing_type=UInt32(),
-                  type_=UInt64())
-
-Making an existing column non-nullable is rejected separately, with
+Adding ``NOT NULL`` does not; YDB answers
 ``SET NOT NULL is currently not supported``:
 
 .. code-block:: python
 
    op.alter_column('users', 'status', nullable=False)  # Fails
 
-Add-copy-drop, as shown in `Modifying a Column`_, is the way to change a
-column. For a primary key column even that is not enough, because the primary
-key of an existing table cannot be changed at all; create a new table, copy the
-data into it, drop the old one and rename.
+Changing a type does not either. Alembic emits ``ALTER COLUMN ... TYPE ...``,
+which the YQL parser rejects with
+``no viable alternative at input 'ALTER COLUMN'`` -- including for a widening
+change that other databases accept:
+
+.. code-block:: python
+
+   op.alter_column('users', 'username',
+                  existing_type=sa.Unicode(50),
+                  type_=sa.Unicode(100))  # Fails
+
+Use add-copy-drop, as shown in `Modifying a Column`_, to change a type. For a
+primary key column even that is not enough, because the primary key of an
+existing table cannot be changed; create a new table, copy the data into it,
+drop the old one and rename.
+
+The remaining ``ALTER COLUMN`` options have no Alembic operation, so reach them
+with raw YQL. Wrap the statement in ``sa.schema.DDL``: the dialect only sends a
+statement to the YDB scheme service when SQLAlchemy marks it as DDL, and a
+plain string is not marked, so it reaches the query service and is rejected
+with ``Scheme operations cannot be executed inside transaction``.
+
+.. code-block:: python
+
+   op.execute(sa.schema.DDL(
+       'ALTER TABLE `users` ALTER COLUMN `username` SET FAMILY default'
+   ))
+
+This applies to any raw DDL passed to ``op.execute``. Raw DML -- an ``UPDATE``
+in a data migration, say -- is fine as a plain string.
 
 Working with YDB Types
 ~~~~~~~~~~~~~~~~~~~~~~

@@ -412,6 +412,46 @@ class TestOperations(TestBase):
         with engine.connect() as conn:
             assert [i["name"] for i in sa.inspect(conn).get_indexes(table_name)] == [index_name]
 
+    def test_alter_column_can_relax_not_null(self, migration_ctx, engine, table_name):
+        """The one ``alter_column`` change YDB accepts, as ``DROP NOT NULL``."""
+        migration_ctx.create_table(
+            table_name,
+            sa.Column("id", sa.Integer, primary_key=True),
+            sa.Column("label", sa.Unicode(50), nullable=False),
+        )
+        with engine.connect() as conn:
+            before = {c["name"]: c["nullable"] for c in sa.inspect(conn).get_columns(table_name)}
+        assert before["label"] is False
+
+        migration_ctx.alter_column(table_name, "label", existing_type=sa.Unicode(50), nullable=True)
+
+        with engine.connect() as conn:
+            after = {c["name"]: c["nullable"] for c in sa.inspect(conn).get_columns(table_name)}
+        assert after["label"] is True
+
+    def test_execute_can_set_column_options_via_ddl_construct(self, migration_ctx, engine, table_name):
+        """``ALTER COLUMN`` options have no Alembic operation, so raw YQL it is.
+
+        The statement has to be wrapped in ``sa.schema.DDL``. The dialect only
+        routes a statement to the YDB scheme service when SQLAlchemy marks it
+        as DDL, and YDB refuses schema operations inside a transaction, so a
+        plain string reaches the query service instead and is rejected.
+        """
+        self._create(migration_ctx, table_name)
+        statement = f"ALTER TABLE `{table_name}` ALTER COLUMN `name` SET FAMILY default"
+
+        migration_ctx.execute(sa.schema.DDL(statement))
+
+        with pytest.raises(sa.exc.DatabaseError, match="Scheme operations cannot be executed"):
+            migration_ctx.execute(statement)
+
+    def test_add_column_cannot_be_not_null(self, migration_ctx, table_name):
+        """A column added to an existing table is always nullable."""
+        self._create(migration_ctx, table_name)
+
+        with pytest.raises(sa.exc.DatabaseError):
+            migration_ctx.add_column(table_name, sa.Column("required", sa.Unicode(20), nullable=False))
+
     def test_execute_runs_a_data_migration(self, migration_ctx, engine, table_name):
         """The data-migration shape ``docs/migrations.rst`` documents."""
         self._create(migration_ctx, table_name)
