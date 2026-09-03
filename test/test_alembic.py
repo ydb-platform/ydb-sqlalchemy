@@ -553,6 +553,31 @@ class TestUnsupportedOperations(TestBase):
         finally:
             drop_tables(engine, child)
 
+    def test_offline_mode_renders_an_unusable_version_insert(self, alembic_env, capsys):
+        """``upgrade --sql`` cannot produce executable YQL for the version table.
+
+        Alembic only supplies ``version_num`` when it inserts a row, so the
+        surrogate primary key column renders as an unfilled bind placeholder.
+        Dropping the surrogate column is not an option either: ``version_num``
+        would become the primary key and the ``UPDATE`` that advances a
+        revision cannot run on YDB.
+
+        Schema statements themselves render fine; it is the version
+        bookkeeping that does not.
+        """
+        alembic_env.add_revision(
+            "0001",
+            "    op.create_table(%r, sa.Column('id', sa.Integer, primary_key=True))" % alembic_env.table,
+            "    op.drop_table(%r)" % alembic_env.table,
+        )
+
+        command.upgrade(alembic_env.config, "head", sql=True)
+
+        rendered = capsys.readouterr().out
+        assert f"CREATE TABLE {alembic_env.table}" in rendered
+        assert f"INSERT INTO {alembic_env.version_table}" in rendered
+        assert "%(id)s" in rendered, "the surrogate key has no value to render"
+
     def test_second_head_is_rejected(self, alembic_env, engine):
         """Branched history needs a second version row, which cannot exist.
 

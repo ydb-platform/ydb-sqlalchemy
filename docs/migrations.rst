@@ -51,8 +51,8 @@ Commands
      - Supported
      - See the operations table for what the generated script may contain
    * - ``upgrade --sql`` (offline mode)
-     - Not covered
-     - Untested; no claim is made either way
+     - **Not supported**
+     - Schema statements render, version bookkeeping does not
 
 Operations inside a revision
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -125,6 +125,11 @@ Other limits
   is unique. YDB supports unique indexes; this is a gap in the dialect, and
   autogenerate cannot converge on a model that declares one. Do not rely on
   ``unique=True`` in a migration until the dialect emits and reflects it.
+- **Offline mode does not produce runnable YQL.** ``upgrade --sql`` renders
+  the schema statements correctly, but the ``alembic_version`` insert comes out
+  with an unfilled placeholder for the surrogate key column, and the update
+  that advances a revision would target a primary key column if that column
+  were dropped. Apply migrations online.
 - **Branched history is not supported.** The version table can only hold one
   row, so a second head fails with a constraint violation. Keep the history
   linear.
