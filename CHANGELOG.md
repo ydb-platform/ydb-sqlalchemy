@@ -5,6 +5,7 @@
   which broke `alembic.op.bulk_insert()`
 * Cover Alembic with integration tests: version table, upgrade/downgrade, operations,
   autogenerate diffs and the unsupported-operation limits
+* Run Alembic's third-party dialect suite (`alembic.testing.suite`) against YDB
 
 ## 0.1.22 ##
 * Ignore table schema in reflection and SQL compilation

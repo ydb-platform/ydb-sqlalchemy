@@ -21,6 +21,10 @@ Everything marked *supported* below is covered by an integration test in
 *not supported* is likewise asserted by a test, so if a future YDB release
 lifts a restriction the test starts failing and this table gets updated.
 
+Alembic's own suite for third-party dialects, ``alembic.testing.suite``, runs
+alongside it from ``test/test_alembic_suite.py``, with the YDB feature flags in
+``test/alembic_requirements.py``.
+
 Commands
 ~~~~~~~~
 
