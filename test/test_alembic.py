@@ -9,6 +9,7 @@ Each test works on tables whose names carry a unique suffix, so the suite is
 safe to run against a shared database and does not depend on it being empty.
 """
 
+import io
 import uuid
 
 import pytest
@@ -36,14 +37,26 @@ from ydb_sqlalchemy.alembic import YDBImpl  # noqa: F401
 
 config = context.config
 version_table = config.get_main_option("version_table")
+table_name = config.get_main_option("table_name", None)
+target_metadata = config.attributes.get("target_metadata")
+
+
+def include_name(name, type_, parent_names):
+    # Autogenerate compares against every table in the database; keep it to
+    # the one this test owns so a shared database does not leak in.
+    if type_ == "table" and table_name is not None:
+        return name == table_name
+    return True
+
 
 connectable = sa.create_engine(config.get_main_option("sqlalchemy.url"), poolclass=pool.NullPool)
 try:
     with connectable.connect() as connection:
         context.configure(
             connection=connection,
-            target_metadata=None,
+            target_metadata=target_metadata,
             version_table=version_table,
+            include_name=include_name,
         )
         with context.begin_transaction():
             context.run_migrations()
@@ -136,7 +149,28 @@ class AlembicEnv:
         cfg.set_main_option("script_location", str(self.root / "migrations"))
         cfg.set_main_option("sqlalchemy.url", str(self.url))
         cfg.set_main_option("version_table", self.version_table)
+        cfg.set_main_option("table_name", self.table)
         return cfg
+
+    def config_for(self, metadata) -> Config:
+        """Config whose ``env.py`` will autogenerate against ``metadata``."""
+        cfg = self.config
+        cfg.attributes["target_metadata"] = metadata
+        return cfg
+
+    def config_with_output(self):
+        """Config whose command output is captured.
+
+        ``Config.stdout`` defaults to the ``sys.stdout`` bound at import time,
+        so pytest's capture does not see what the commands print.
+        """
+        buffer = io.StringIO()
+        cfg = self.config
+        cfg.stdout = buffer
+        return cfg, buffer
+
+    def generated_scripts(self):
+        return sorted(self.versions.glob("*.py"))
 
     def add_revision(self, revision: str, upgrade: str, downgrade: str) -> None:
         """Write a revision file chained onto the previously added one."""
@@ -236,6 +270,94 @@ class TestVersionTable(TestBase):
         assert alembic_env.current_heads(engine) == {"0001"}
         with engine.connect() as conn:
             assert not sa.inspect(conn).has_table(alembic_env.table)
+
+
+class TestCommands(TestBase):
+    """The Alembic CLI commands, driven through ``alembic.command``."""
+
+    @pytest.fixture
+    def env(self, alembic_env):
+        alembic_env.add_revision(
+            "0001",
+            "    op.create_table(\n"
+            f"        {alembic_env.table!r},\n"
+            "        sa.Column('id', sa.Integer, primary_key=True),\n"
+            "        sa.Column('name', sa.Unicode),\n"
+            "    )",
+            f"    op.drop_table({alembic_env.table!r})",
+        )
+        return alembic_env
+
+    def test_current_reports_the_applied_revision(self, env):
+        cfg, out = env.config_with_output()
+        command.current(cfg)
+        assert out.getvalue().strip() == ""
+
+        env.upgrade()
+
+        cfg, out = env.config_with_output()
+        command.current(cfg)
+        assert "0001" in out.getvalue()
+
+    def test_history_lists_the_revisions(self, env):
+        env.add_revision(
+            "0002",
+            f"    op.add_column({env.table!r}, sa.Column('qty', sa.Integer))",
+            f"    op.drop_column({env.table!r}, 'qty')",
+        )
+        cfg, out = env.config_with_output()
+
+        command.history(cfg)
+
+        rendered = out.getvalue()
+        assert "0001" in rendered
+        assert "0002" in rendered
+
+    def _model(self, table_name):
+        metadata = sa.MetaData()
+        sa.Table(
+            table_name,
+            metadata,
+            sa.Column("id", sa.Integer, primary_key=True),
+            sa.Column("name", sa.Unicode),
+        )
+        return metadata
+
+    def test_revision_autogenerate_writes_a_create_table(self, alembic_env, engine):
+        """``revision --autogenerate`` against a database without the table.
+
+        Runs on an environment with no revisions yet, since autogenerate
+        refuses to run unless the database is at head.
+        """
+        before = set(alembic_env.generated_scripts())
+
+        command.revision(
+            alembic_env.config_for(self._model(alembic_env.table)),
+            message="create table",
+            autogenerate=True,
+        )
+
+        written = set(alembic_env.generated_scripts()) - before
+        assert len(written) == 1
+        body = written.pop().read_text()
+        assert "op.create_table" in body
+        assert alembic_env.table in body
+        assert "op.drop_table" in body, "the downgrade should be generated too"
+
+    def test_revision_autogenerate_is_empty_when_in_sync(self, env, engine):
+        env.upgrade()
+        before = set(env.generated_scripts())
+
+        command.revision(
+            env.config_for(self._model(env.table)),
+            message="no change",
+            autogenerate=True,
+        )
+
+        written = set(env.generated_scripts()) - before
+        assert len(written) == 1
+        body = written.pop().read_text()
+        assert "op." not in body, f"expected an empty migration, got:\n{body}"
 
 
 class TestUpgradeDowngrade(TestBase):
@@ -705,6 +827,16 @@ class TestAutogenerate(TestBase):
         diff = self._diff(engine, self._model(table_name, index=True), table_name)
 
         assert [op[0] for op in diff] == ["add_index"]
+        assert diff[0][1].name == f"ix_{table_name}_name"
+
+    def test_detects_removed_index(self, engine, table_name):
+        with engine.connect() as conn:
+            self._model(table_name, index=True).create_all(conn)
+            conn.commit()
+
+        diff = self._diff(engine, self._model(table_name), table_name)
+
+        assert [op[0] for op in diff] == ["remove_index"]
         assert diff[0][1].name == f"ix_{table_name}_name"
 
     def test_detects_removed_table(self, engine, table_name):

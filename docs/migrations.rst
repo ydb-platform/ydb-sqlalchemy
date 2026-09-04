@@ -49,7 +49,8 @@ Commands
      -
    * - ``revision --autogenerate``
      - Supported
-     - See the operations table for what the generated script may contain
+     - Scope it with ``include_name``; see the operations table for what the
+       generated script may contain
    * - ``upgrade --sql`` (offline mode)
      - **Not supported**
      - Schema statements render, version bookkeeping does not
@@ -395,8 +396,6 @@ Creating Indexes
 
 Adding a New Table
 ~~~~~~~~~~~~~~~~~~
-
-.. code-block:: python
 
 YDB has no foreign keys, so a revision can only declare the column and, if the
 lookup needs it, a secondary index:
