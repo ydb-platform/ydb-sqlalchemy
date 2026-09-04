@@ -13,7 +13,130 @@ Alembic is SQLAlchemy's database migration tool that allows you to:
 - Rollback to previous schema versions
 - Generate migration scripts automatically
 
-YDB SQLAlchemy provides full Alembic integration with some YDB-specific considerations.
+Support Status
+--------------
+
+Everything marked *supported* below is covered by an integration test in
+``test/test_alembic.py`` and runs on every commit. Everything marked
+*not supported* is likewise asserted by a test, so if a future YDB release
+lifts a restriction the test starts failing and this table gets updated.
+
+Alembic's own suite for third-party dialects, ``alembic.testing.suite``, runs
+alongside it from ``test/test_alembic_suite.py``, with the YDB feature flags in
+``test/alembic_requirements.py``.
+
+Commands
+~~~~~~~~
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 20 50
+
+   * - Command
+     - Status
+     - Notes
+   * - ``upgrade`` (``head``, a revision, ``+1``)
+     - Supported
+     - Re-running at head is a no-op
+   * - ``downgrade`` (``-1``, a revision, ``base``)
+     - Supported
+     -
+   * - ``stamp``
+     - Supported
+     - Records the revision without running it
+   * - ``current``, ``history``
+     - Supported
+     -
+   * - ``revision --autogenerate``
+     - Supported
+     - Scope it with ``include_name``; see the operations table for what the
+       generated script may contain
+   * - ``upgrade --sql`` (offline mode)
+     - **Not supported**
+     - Schema statements render, version bookkeeping does not
+
+Operations inside a revision
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 20 50
+
+   * - Operation
+     - Status
+     - Notes
+   * - ``create_table``
+     - Supported
+     - Needs a primary key; no foreign keys
+   * - ``drop_table``
+     - Supported
+     -
+   * - ``rename_table``
+     - Supported
+     -
+   * - ``add_column``
+     - Supported
+     - The new column is always nullable
+   * - ``drop_column``
+     - Supported
+     -
+   * - ``create_index`` / ``drop_index``
+     - Supported
+     - But see the note on ``unique`` below
+   * - ``bulk_insert``
+     - Supported
+     -
+   * - ``execute``
+     - Supported
+     - Raw DDL must be wrapped in ``sa.schema.DDL``
+   * - ``alter_column`` (``nullable=True``)
+     - Supported
+     - Maps onto YDB's ``DROP NOT NULL``
+   * - ``alter_column`` (``nullable=False``)
+     - **Not supported**
+     - YDB: ``SET NOT NULL is currently not supported``
+   * - ``alter_column`` (``type_=``)
+     - **Not supported**
+     - YDB's ``ALTER COLUMN`` changes options, not types
+   * - Foreign key constraints
+     - **Not supported**
+     - YDB has no foreign keys
+   * - Changing a primary key
+     - **Not supported**
+     - Create a new table, copy, drop, rename
+
+Autogenerate
+~~~~~~~~~~~~
+
+Detects added and removed tables, added and removed columns, and added
+indexes, and produces an empty diff when the model matches the database.
+A changed column type has to be resolved by hand, since the ``alter_column``
+autogenerate would emit for it is not executable on YDB.
+
+Autogenerate compares against every table in the database, so scope it with
+``include_name``/``include_object`` in ``env.py`` if the database holds tables
+outside your model.
+
+Other limits
+~~~~~~~~~~~~
+
+- **Unique indexes are not actually unique.** ``create_index(unique=True)``
+  compiles without ``UNIQUE``, so the resulting index does not enforce
+  uniqueness, and reflection reports ``unique: False`` even for an index that
+  is unique. YDB supports unique indexes; this is a gap in the dialect, and
+  autogenerate cannot converge on a model that declares one. Do not rely on
+  ``unique=True`` in a migration until the dialect emits and reflects it.
+- **Offline mode does not produce runnable YQL.** ``upgrade --sql`` renders
+  the schema statements correctly, but the ``alembic_version`` insert comes out
+  with an unfilled placeholder for the surrogate key column, and the update
+  that advances a revision would target a primary key column if that column
+  were dropped. Apply migrations online.
+- **Branched history is not supported.** The version table can only hold one
+  row, so a second head fails with a constraint violation. Keep the history
+  linear.
+- **Migrations are not atomic.** YDB cannot run schema operations in a
+  transaction, so a revision that fails part way through leaves the schema
+  partly migrated. Keep revisions small.
 
 Installation
 ------------
@@ -87,16 +210,20 @@ This creates an ``alembic.ini`` configuration file and a ``migrations/`` directo
 YDB-Specific Configuration
 --------------------------
 
-YDB requires special configuration in ``env.py`` due to its unique characteristics:
+Alembic dispatches on the SQLAlchemy dialect name and refuses to start unless an
+implementation is registered for that name, so ``env.py`` has to import the one
+shipped with this package. The import is the whole integration: ``YDBImpl``
+registers itself for the ``yql`` dialect, and it gives the ``alembic_version``
+table a layout YDB accepts.
 
 .. code-block:: python
 
    # migrations/env.py
    from logging.config import fileConfig
-   import sqlalchemy as sa
    from sqlalchemy import engine_from_config, pool
    from alembic import context
-   from alembic.ddl.impl import DefaultImpl
+
+   from ydb_sqlalchemy.alembic import YDBImpl  # noqa: F401
 
    # Import your models
    from myapp.models import Base
@@ -107,10 +234,6 @@ YDB requires special configuration in ``env.py`` due to its unique characteristi
        fileConfig(config.config_file_name)
 
    target_metadata = Base.metadata
-
-   # YDB-specific implementation
-   class YDBImpl(DefaultImpl):
-       __dialect__ = "yql"
 
    def run_migrations_offline() -> None:
        """Run migrations in 'offline' mode."""
@@ -139,15 +262,6 @@ YDB requires special configuration in ``env.py`` due to its unique characteristi
                target_metadata=target_metadata
            )
 
-           # YDB-specific: Custom version table structure
-           ctx = context.get_context()
-           ctx._version = sa.Table(
-               ctx.version_table,
-               sa.MetaData(),
-               sa.Column("version_num", sa.String(32), nullable=False),
-               sa.Column("id", sa.Integer(), nullable=True, primary_key=True),
-           )
-
            with context.begin_transaction():
                context.run_migrations()
 
@@ -155,6 +269,20 @@ YDB requires special configuration in ``env.py`` due to its unique characteristi
        run_migrations_offline()
    else:
        run_migrations_online()
+
+The Version Table
+~~~~~~~~~~~~~~~~~
+
+``YDBImpl`` creates ``alembic_version`` with an extra, always-``NULL`` ``id``
+column that serves as its primary key, instead of Alembic's usual primary key on
+``version_num``. Two YDB rules force this: a primary key column cannot be
+updated, and Alembic advances a revision with
+``UPDATE alembic_version SET version_num = ...``; and the named primary key
+constraint Alembic emits by default is rejected by the YDB parser.
+
+A consequence is that branched migrations are not supported -- more than one
+head would need more than one row, and the rows would collide on a ``NULL``
+primary key. Keep the revision history linear.
 
 Creating Your First Migration
 -----------------------------
@@ -239,20 +367,21 @@ Adding a Column
 Modifying a Column
 ~~~~~~~~~~~~~~~~~~
 
+``op.alter_column()`` on YDB can only relax nullability, not change a type --
+see `What alter_column Can Change`_. Replace a column by adding the
+replacement, copying the data and dropping the original:
+
 .. code-block:: python
 
-   # Change column type (be careful with YDB limitations)
    def upgrade() -> None:
-       op.alter_column('users', 'username',
-                      existing_type=sa.String(50),
-                      type_=sa.String(100),
-                      nullable=False)
+       op.add_column('users', sa.Column('username_v2', sa.Unicode(100)))
+       op.execute('UPDATE `users` SET username_v2 = username')
+       op.drop_column('users', 'username')
 
    def downgrade() -> None:
-       op.alter_column('users', 'username',
-                      existing_type=sa.String(100),
-                      type_=sa.String(50),
-                      nullable=False)
+       op.add_column('users', sa.Column('username', sa.Unicode(50)))
+       op.execute('UPDATE `users` SET username = username_v2')
+       op.drop_column('users', 'username_v2')
 
 Creating Indexes
 ~~~~~~~~~~~~~~~~
@@ -268,6 +397,9 @@ Creating Indexes
 Adding a New Table
 ~~~~~~~~~~~~~~~~~~
 
+YDB has no foreign keys, so a revision can only declare the column and, if the
+lookup needs it, a secondary index:
+
 .. code-block:: python
 
    def upgrade() -> None:
@@ -278,8 +410,8 @@ Adding a New Table
            sa.Column('content', sa.Text(), nullable=True),
            sa.Column('created_at', sa.DateTime(), nullable=False),
            sa.PrimaryKeyConstraint('id'),
-           sa.ForeignKeyConstraint(['user_id'], ['users.id'])
        )
+       op.create_index('ix_posts_user_id', 'posts', ['user_id'])
 
    def downgrade() -> None:
        op.drop_table('posts')
@@ -305,22 +437,61 @@ YDB doesn't support modifying primary key columns. Plan your primary keys carefu
    # 3. Drop old table
    # 4. Rename new table
 
-Data Type Constraints
-~~~~~~~~~~~~~~~~~~~~~
+.. _What alter_column Can Change:
 
-Some type changes are not supported:
+What ``alter_column`` Can Change
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+YDB's `ALTER COLUMN <https://ydb.tech/docs/en/yql/reference/syntax/alter_table/columns>`_
+changes column *options* -- it can drop ``NOT NULL`` and set ``FAMILY``,
+``DEFAULT`` or ``COMPRESSION``. It cannot change a column's type. Of the
+changes Alembic can express, only relaxing nullability goes through.
+
+Relaxing ``NOT NULL`` works, because it maps onto ``DROP NOT NULL``:
 
 .. code-block:: python
 
-   # Supported: Increasing string length
    op.alter_column('users', 'username',
-                  existing_type=sa.String(50),
-                  type_=sa.String(100))
+                  existing_type=sa.Unicode(50),
+                  nullable=True)  # Works
 
-   # Not supported: Changing fundamental type
-   # op.alter_column('users', 'id',
-   #                existing_type=UInt32(),
-   #                type_=UInt64())  # This won't work
+Adding ``NOT NULL`` does not; YDB answers
+``SET NOT NULL is currently not supported``:
+
+.. code-block:: python
+
+   op.alter_column('users', 'status', nullable=False)  # Fails
+
+Changing a type does not either. Alembic emits ``ALTER COLUMN ... TYPE ...``,
+which the YQL parser rejects with
+``no viable alternative at input 'ALTER COLUMN'`` -- including for a widening
+change that other databases accept:
+
+.. code-block:: python
+
+   op.alter_column('users', 'username',
+                  existing_type=sa.Unicode(50),
+                  type_=sa.Unicode(100))  # Fails
+
+Use add-copy-drop, as shown in `Modifying a Column`_, to change a type. For a
+primary key column even that is not enough, because the primary key of an
+existing table cannot be changed; create a new table, copy the data into it,
+drop the old one and rename.
+
+The remaining ``ALTER COLUMN`` options have no Alembic operation, so reach them
+with raw YQL. Wrap the statement in ``sa.schema.DDL``: the dialect only sends a
+statement to the YDB scheme service when SQLAlchemy marks it as DDL, and a
+plain string is not marked, so it reaches the query service and is rejected
+with ``Scheme operations cannot be executed inside transaction``.
+
+.. code-block:: python
+
+   op.execute(sa.schema.DDL(
+       'ALTER TABLE `users` ALTER COLUMN `username` SET FAMILY default'
+   ))
+
+This applies to any raw DDL passed to ``op.execute``. Raw DML -- an ``UPDATE``
+in a data migration, say -- is fine as a plain string.
 
 Working with YDB Types
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -371,8 +542,9 @@ Sometimes you need to migrate data along with schema:
            users_table.update().values(status='active')
        )
 
-       # Make column non-nullable
-       op.alter_column('users', 'status', nullable=False)
+       # The column stays nullable: YDB cannot add NOT NULL to an existing
+       # column. Declare it NOT NULL at CREATE TABLE time, or enforce it in
+       # the application.
 
    def downgrade() -> None:
        op.drop_column('users', 'status')
@@ -397,21 +569,23 @@ Migration Best Practices
 1. **Test Migrations**: Always test migrations on a copy of production data
 2. **Backup Data**: Backup your data before running migrations in production
 3. **Review Generated Migrations**: Always review auto-generated migrations before applying
-4. **Use Transactions**: Migrations run in transactions by default
-5. **Plan Primary Keys**: Design primary keys carefully as they can't be easily changed
+4. **Do Not Rely on Atomicity**: YDB cannot run schema operations inside a
+   transaction, so a revision that fails part way through leaves the schema
+   partly migrated. Keep revisions small so that re-running one after a manual
+   fix is cheap.
+5. **Plan Primary Keys**: Design primary keys carefully as they can't be changed
+6. **Plan Nullability**: A column can only be made ``NOT NULL`` when the table is
+   created
 
 .. code-block:: python
 
    # Good migration practices
    def upgrade() -> None:
-       # Add columns as nullable first
+       # One schema change per revision, so a failure is easy to place
        op.add_column('users', sa.Column('new_field', sa.String(100), nullable=True))
 
        # Populate data
        # ... data migration code ...
-
-       # Then make non-nullable if needed
-       op.alter_column('users', 'new_field', nullable=False)
 
 Common Commands
 ---------------

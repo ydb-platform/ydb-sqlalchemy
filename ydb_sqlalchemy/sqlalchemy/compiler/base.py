@@ -363,7 +363,13 @@ class BaseYqlCompiler(StrSQLCompiler):
         if bind_name in self.column_keys and hasattr(self.compile_state, "dml_table"):
             if bind_name in self.compile_state.dml_table.c:
                 column = self.compile_state.dml_table.c[bind_name]
-                return column.nullable and not column.primary_key
+                # Lightweight constructs built with sa.table()/sa.column() -- the form
+                # alembic documents for op.bulk_insert() -- yield ColumnClause objects,
+                # which carry neither nullable nor primary_key. Fall back to the same
+                # answer as for a column that is not part of the statement at all.
+                nullable = getattr(column, "nullable", False)
+                primary_key = getattr(column, "primary_key", False)
+                return nullable and not primary_key
         return False
 
     def _guess_bound_variable_type_by_parameters(

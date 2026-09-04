@@ -136,3 +136,5 @@ dmypy.json
 
 docs/.build/
 .DS_Store
+# staging directory created by alembic.testing.suite
+scratch/
