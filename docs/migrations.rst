@@ -284,6 +284,80 @@ A consequence is that branched migrations are not supported -- more than one
 head would need more than one row, and the rows would collide on a ``NULL``
 primary key. Keep the revision history linear.
 
+Authentication
+~~~~~~~~~~~~~~
+
+The ``engine_from_config`` form above builds the engine from ``sqlalchemy.url``
+alone, which only covers anonymous access. Every other method -- an IAM token,
+a service account key, static credentials -- is a ``ydb.Credentials`` object
+passed through ``connect_args``, and an object cannot live in a URL. Such an
+environment builds the engine itself:
+
+.. code-block:: python
+
+   # migrations/env.py
+   import os
+
+   import sqlalchemy as sa
+   import ydb
+   from sqlalchemy import pool
+
+   from alembic import context
+   from ydb_sqlalchemy.alembic import YDBImpl  # noqa: F401
+
+   config = context.config
+
+   def credentials():
+       # ydb.AccessTokenCredentials, ydb.ServiceAccountCredentials,
+       # ydb.StaticCredentials, ydb.iam.MetadataUrlCredentials, ...
+       return ydb.AccessTokenCredentials(os.environ["YDB_TOKEN"])
+
+   def run_migrations_online() -> None:
+       engine = sa.create_engine(
+           config.get_main_option("sqlalchemy.url"),
+           poolclass=pool.NullPool,
+           connect_args={"credentials": credentials()},
+       )
+       try:
+           with engine.connect() as connection:
+               context.configure(connection=connection, target_metadata=target_metadata)
+
+               with context.begin_transaction():
+                   context.run_migrations()
+       finally:
+           engine.dispose()
+
+``YDBImpl`` is selected from the connection's dialect, so it does not care how
+the engine was built; the import is still all that is YDB-specific about the
+migration machinery itself.
+
+Beyond credentials, the same applies to anything else that is an argument
+rather than a string -- ``ydb.DriverConfig``, a custom
+``ydb.QueryClientSettings``, or a shared session pool. ``env.py`` is where they
+go.
+
+Autogenerating Against a Throwaway Database
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``revision --autogenerate`` compares the model against a live database and
+refuses to run unless that database is at head, so it needs one to talk to.
+Pointing it at production to author a migration is usually not what you want.
+
+A practical alternative is to start a throwaway YDB container, run
+``upgrade head`` against it to replay the existing history, and autogenerate
+from there:
+
+.. code-block:: python
+
+   from alembic import command
+
+   # container: a locally started ydbplatform/local-ydb, with config pointed at it
+   command.upgrade(config, "head")
+   script = command.revision(config, message="...", autogenerate=True, rev_id=next_id)
+
+The generated file can then be printed or moved into the project. This keeps
+autogenerate reproducible in CI and independent of any deployed database.
+
 Creating Your First Migration
 -----------------------------
 

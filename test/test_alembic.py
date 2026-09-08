@@ -64,6 +64,36 @@ finally:
     connectable.dispose()
 """
 
+CREDENTIALS_ENV_PY = """
+import sqlalchemy as sa
+import ydb
+from sqlalchemy import pool
+
+from alembic import context
+from ydb_sqlalchemy.alembic import YDBImpl  # noqa: F401
+
+config = context.config
+
+# A ydb.Credentials object cannot be expressed in a URL, so an environment
+# that needs one builds the engine itself instead of using engine_from_config.
+engine = sa.create_engine(
+    config.get_main_option("sqlalchemy.url"),
+    poolclass=pool.NullPool,
+    connect_args={"credentials": ydb.AnonymousCredentials()},
+)
+try:
+    with engine.connect() as connection:
+        context.configure(
+            connection=connection,
+            target_metadata=None,
+            version_table=config.get_main_option("version_table"),
+        )
+        with context.begin_transaction():
+            context.run_migrations()
+finally:
+    engine.dispose()
+"""
+
 SCRIPT_MAKO = '''"""${message}
 
 Revision ID: ${up_revision}
@@ -133,15 +163,18 @@ def drop_tables(engine, *names) -> None:
 class AlembicEnv:
     """A self-contained Alembic project in a temporary directory."""
 
-    def __init__(self, root, url, version_table):
+    def __init__(self, root, url, version_table, env_py=ENV_PY):
         self.root = root
         self.url = url
         self.version_table = version_table
         self.versions = root / "migrations" / "versions"
         self.versions.mkdir(parents=True)
-        (root / "migrations" / "env.py").write_text(ENV_PY)
+        (root / "migrations" / "env.py").write_text(env_py)
         (root / "migrations" / "script.py.mako").write_text(SCRIPT_MAKO)
         self._revisions = []
+
+    def rewrite_env(self, env_py: str) -> None:
+        (self.root / "migrations" / "env.py").write_text(env_py)
 
     @property
     def config(self) -> Config:
@@ -358,6 +391,36 @@ class TestCommands(TestBase):
         assert len(written) == 1
         body = written.pop().read_text()
         assert "op." not in body, f"expected an empty migration, got:\n{body}"
+
+
+class TestCustomEngine(TestBase):
+    """``env.py`` may build the engine itself.
+
+    Anything beyond a URL -- IAM tokens, service account keys, static
+    credentials -- has to be passed as a ``ydb.Credentials`` object through
+    ``connect_args``, which ``engine_from_config`` cannot express. ``YDBImpl``
+    is selected from the connection's dialect, so it does not care how the
+    engine was built.
+    """
+
+    def test_env_can_build_its_own_engine_with_credentials(self, alembic_env, engine):
+        alembic_env.rewrite_env(CREDENTIALS_ENV_PY)
+        alembic_env.add_revision(
+            "0001",
+            "    op.create_table(%r, sa.Column('id', sa.Integer, primary_key=True))" % alembic_env.table,
+            "    op.drop_table(%r)" % alembic_env.table,
+        )
+
+        alembic_env.upgrade()
+
+        assert alembic_env.current_heads(engine) == {"0001"}
+        with engine.connect() as conn:
+            assert sa.inspect(conn).has_table(alembic_env.table)
+
+        alembic_env.downgrade("base")
+
+        with engine.connect() as conn:
+            assert not sa.inspect(conn).has_table(alembic_env.table)
 
 
 class TestUpgradeDowngrade(TestBase):

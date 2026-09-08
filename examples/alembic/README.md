@@ -40,6 +40,12 @@ adds a surrogate primary key column instead, so no changes to
 Because the single version row is keyed on an always-`NULL` surrogate column,
 branched migrations are not supported -- keep the revision history linear.
 
+This example connects anonymously, so `env.py` can build the engine straight from
+`sqlalchemy.url`. Any other authentication -- an IAM token, a service account key,
+static credentials -- is a `ydb.Credentials` object that has to be passed through
+`connect_args`, which means building the engine in `env.py` yourself. See
+[Authentication](../../docs/migrations.rst) in the migration guide.
+
 ## Example
 
 To run this example:
