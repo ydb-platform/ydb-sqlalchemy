@@ -1,11 +1,11 @@
 from logging.config import fileConfig
 
-import sqlalchemy as sa
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 
 from alembic import context
-from alembic.ddl.impl import DefaultImpl
+
+from ydb_sqlalchemy.alembic import YDBImpl  # noqa: F401
 
 
 # this is the Alembic Config object, which provides
@@ -29,10 +29,6 @@ target_metadata = Base.metadata
 # can be acquired:
 # my_important_option = config.get_main_option("my_important_option")
 # ... etc.
-
-
-class YDBImpl(DefaultImpl):
-    __dialect__ = "yql"
 
 
 def run_migrations_offline() -> None:
@@ -75,14 +71,6 @@ def run_migrations_online() -> None:
     with connectable.connect() as connection:
         context.configure(
             connection=connection, target_metadata=target_metadata
-        )
-
-        ctx = context.get_context()
-        ctx._version = sa.Table(  # noqa: SLF001
-            ctx.version_table,
-            sa.MetaData(),
-            sa.Column("version_num", sa.String(32), nullable=False),
-            sa.Column("id", sa.Integer(), nullable=True, primary_key=True),
         )
 
         with context.begin_transaction():

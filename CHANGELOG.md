@@ -1,3 +1,6 @@
+* Ship the Alembic integration as `ydb_sqlalchemy.alembic`, so `env.py` no longer defines its own `DefaultImpl`
+* Fix parameter binding for statements built on `sa.table()`/`sa.column()`, which broke `alembic.op.bulk_insert()`
+
 ## 0.1.22 ##
 * Ignore table schema in reflection and SQL compilation
 
