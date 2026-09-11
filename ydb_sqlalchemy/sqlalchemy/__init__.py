@@ -21,6 +21,11 @@ from sqlalchemy.sql.elements import ClauseList
 import ydb_dbapi
 from ydb_sqlalchemy.sqlalchemy.dbapi_adapter import AdaptedAsyncConnection
 from ydb_sqlalchemy.sqlalchemy.dml import Upsert
+from ydb_sqlalchemy.sqlalchemy.retry import (  # noqa: F401
+    retry_ydb,
+    retry_ydb_operation,
+    retry_ydb_operation_async,
+)
 
 from ydb_sqlalchemy.sqlalchemy.compiler import YqlCompiler, YqlDDLCompiler, YqlIdentifierPreparer, YqlTypeCompiler
 
