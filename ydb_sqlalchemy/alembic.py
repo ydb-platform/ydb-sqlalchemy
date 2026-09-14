@@ -16,8 +16,25 @@ Alembic stays an optional dependency of the package.
 
 from typing import Any, Optional
 
-from alembic.ddl.impl import DefaultImpl
 from sqlalchemy import Column, Integer, MetaData, String, Table
+
+try:
+    from alembic.ddl.impl import DefaultImpl as _DefaultImpl
+except ModuleNotFoundError as error:
+    if error.name != "alembic":
+        raise
+
+    _ALEMBIC_IMPORT_ERROR = error
+
+    class _DefaultImpl:
+        """Placeholder that keeps the module importable without Alembic."""
+
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            raise ModuleNotFoundError(
+                "Alembic 1.14 or later is required to use ydb_sqlalchemy.alembic",
+                name="alembic",
+            ) from _ALEMBIC_IMPORT_ERROR
+
 
 __all__ = ["YDBImpl"]
 
@@ -25,7 +42,7 @@ __all__ = ["YDBImpl"]
 VERSION_TABLE_PK_COLUMN = "id"
 
 
-class YDBImpl(DefaultImpl):
+class YDBImpl(_DefaultImpl):
     """Alembic implementation for YDB.
 
     Registered for the ``yql`` dialect name as a side effect of being defined.
