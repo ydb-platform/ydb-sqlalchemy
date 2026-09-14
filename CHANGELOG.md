@@ -1,3 +1,4 @@
+## 0.1.24 ##
 * Keep `ydb_sqlalchemy.alembic` importable when the optional Alembic dependency is absent
 
 ## 0.1.23 ##
