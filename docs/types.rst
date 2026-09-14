@@ -93,6 +93,11 @@ The following table shows the complete mapping between YDB native types, YDB SQL
      - ``String`` / ``Text``
      - ``str``
      -
+   * - ``Uuid``
+     - :class:`~ydb_sqlalchemy.sqlalchemy.types.YqlUUID`
+     - ``UUID`` (SQLAlchemy 2.0+)
+     - ``uuid.UUID`` / ``str``
+     - Explicit opt-in; ``sa.Uuid`` keeps using ``Utf8``
    * - ``Date``
      - :class:`~ydb_sqlalchemy.sqlalchemy.datetime_types.YqlDate`
      - ``Date``
@@ -161,6 +166,27 @@ Most standard SQLAlchemy types work with YDB:
        description = Column(Text)
        is_active = Column(Boolean)
        price = Column(Float)
+
+UUID Types
+----------
+
+For compatibility with earlier releases, SQLAlchemy's generic ``Uuid`` type
+continues to use a YDB ``Utf8`` column. Use
+:class:`~ydb_sqlalchemy.sqlalchemy.types.YqlUUID` when native YDB ``Uuid``
+storage is required. On SQLAlchemy 2.0 and newer, the SQL-native ``UUID`` type
+is an equivalent explicit opt-in.
+
+.. code-block:: python
+
+   import sqlalchemy as sa
+   from ydb_sqlalchemy import types as ydb_types
+
+   native_uuid = sa.Column(ydb_types.YqlUUID())
+   native_uuid_as_text = sa.Column(ydb_types.YqlUUID(as_uuid=False))
+   native_uuid_sa20 = sa.Column(sa.UUID())
+
+   # Existing behavior: stored as YDB Utf8.
+   compatible_uuid = sa.Column(sa.Uuid())
 
 YDB-Specific Integer Types
 --------------------------

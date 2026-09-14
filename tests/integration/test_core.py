@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import uuid
 from decimal import Decimal
 from typing import NamedTuple
 
@@ -13,6 +14,8 @@ from ydb._grpc.v4.protos import ydb_common_pb2
 from ydb_sqlalchemy import IsolationLevel, dbapi
 from ydb_sqlalchemy import sqlalchemy as ydb_sa
 from ydb_sqlalchemy.sqlalchemy import types
+
+_UUID_TABLE_NAME = f"test_uuid_types_{uuid.uuid4().hex[:8]}"
 
 if sa.__version__ >= "2.":
     from sqlalchemy import NullPool
@@ -254,6 +257,13 @@ class TestTypes(TablesTest):
             Column("date", sa.Date),
             # Column("interval", sa.Interval),
         )
+        Table(
+            _UUID_TABLE_NAME,
+            metadata,
+            Column("id", Integer, primary_key=True),
+            Column("uuid_native", types.YqlUUID),
+            Column("uuid_str", sa.Uuid if not ydb_sa.OLD_SA else sa.String),
+        )
 
     def test_primitive_types(self, connection):
         table = self.tables.test_primitive_types
@@ -340,6 +350,44 @@ class TestTypes(TablesTest):
             timestamp_value_tz.astimezone(datetime.timezone.utc),  # YDB doesn't store timezone, so it is always utc
             today,
         )
+
+    def test_native_uuid_types(self, connection):
+        table = self.tables[_UUID_TABLE_NAME]
+        uuid_value = uuid.uuid4()
+
+        statement = sa.insert(table).values(id=1, uuid_native=uuid_value)
+        connection.execute(statement)
+        row = connection.execute(sa.select(table.c.id, table.c.uuid_native).where(table.c.id == 1)).fetchone()
+        assert row == (1, uuid_value)
+
+        uuid_value_str = str(uuid_value)
+        statement = sa.insert(table).values(id=2, uuid_native=uuid_value_str)
+        connection.execute(statement)
+        row = connection.execute(sa.select(table.c.id, table.c.uuid_native).where(table.c.id == 2)).fetchone()
+        assert row == (2, uuid_value)
+
+    @pytest.mark.skipif(ydb_sa.OLD_SA, reason="sa.Uuid was added in SQLAlchemy 2.0")
+    def test_generic_uuid_keeps_utf8_storage(self, connection):
+        table = self.tables[_UUID_TABLE_NAME]
+        uuid_value = uuid.uuid4()
+
+        connection.execute(sa.insert(table).values(id=3, uuid_str=uuid_value))
+        row = connection.execute(sa.select(table.c.uuid_str).where(table.c.id == 3)).fetchone()
+        assert row == (uuid_value,)
+
+        table_description = connection.connection.driver_connection.describe(table.name)
+        column_types = {column.name: column.type for column in table_description.columns}
+        assert column_types["uuid_native"].item == ydb.PrimitiveType.UUID
+        assert column_types["uuid_str"].item == ydb.PrimitiveType.Utf8
+
+    def test_native_uuid_reflection(self, connection):
+        table = self.tables[_UUID_TABLE_NAME]
+        reflected_metadata = sa.MetaData()
+
+        reflected_metadata.reflect(connection, only=[table.name])
+
+        reflected_type = reflected_metadata.tables[table.name].c.uuid_native.type
+        assert isinstance(reflected_type, types.YqlUUID)
 
 
 class TestWithClause(TablesTest):

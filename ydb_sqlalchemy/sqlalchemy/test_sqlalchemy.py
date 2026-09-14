@@ -1,5 +1,9 @@
 from datetime import date
+import uuid
+
+import pytest
 import sqlalchemy as sa
+import ydb
 
 from . import YqlDialect, types
 
@@ -112,6 +116,54 @@ def test_types_compilation():
     struct = types.StructType({"a": types.Int32(), "b": types.ListType(types.Int32())})
     # Ordered by key: a, b
     assert compile_type(struct) == "Struct<a:Int32,b:List<Int32>>"
+
+
+def test_native_uuid_is_explicit_opt_in():
+    dialect = YqlDialect()
+    type_compiler = dialect.type_compiler
+
+    assert type_compiler.process(types.YqlUUID()) == "UUID"
+    assert type_compiler.get_ydb_type(types.YqlUUID(), is_optional=False) == ydb.PrimitiveType.UUID
+    assert type_compiler.get_ydb_type(types.YqlUUID(), is_optional=True).item == ydb.PrimitiveType.UUID
+
+    if not hasattr(sa, "Uuid"):
+        return
+
+    assert dialect.supports_native_uuid is False
+    assert type_compiler.process(sa.Uuid()) == "UTF8"
+    assert type_compiler.get_ydb_type(sa.Uuid(), is_optional=False) == ydb.PrimitiveType.Utf8
+    assert type_compiler.process(sa.UUID()) == "UUID"
+    assert type_compiler.get_ydb_type(sa.UUID(), is_optional=False) == ydb.PrimitiveType.UUID
+
+    dialect_impl = sa.UUID(as_uuid=False).dialect_impl(dialect)
+    assert isinstance(dialect_impl, types.YqlUUID)
+    assert dialect_impl.as_uuid is False
+
+
+def test_native_uuid_processors():
+    dialect = YqlDialect()
+    value = uuid.uuid4()
+    uuid_type = types.YqlUUID()
+
+    bind_processor = uuid_type.bind_processor(dialect)
+    assert bind_processor(None) is None
+    assert bind_processor(value) == value
+    assert bind_processor(str(value)) == value
+    with pytest.raises(ValueError):
+        bind_processor("not-a-uuid")
+
+    result_processor = uuid_type.result_processor(dialect, None)
+    assert result_processor(None) is None
+    assert result_processor(value) == value
+    assert result_processor(str(value)) == value
+    assert uuid_type.literal_processor(dialect)(value) == f'Uuid("{value}")'
+
+    text_uuid_type = types.YqlUUID(as_uuid=False)
+    assert text_uuid_type.bind_processor(dialect)(str(value)) == value
+    assert text_uuid_type.result_processor(dialect, None)(value) == str(value)
+
+    text_literal = sa.literal(str(value), text_uuid_type)
+    assert str(text_literal.compile(dialect=dialect, compile_kwargs={"literal_binds": True})) == f'Uuid("{value}")'
 
 
 def test_statement_prefixes_prepended_to_query():

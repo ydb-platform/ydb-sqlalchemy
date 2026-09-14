@@ -68,6 +68,9 @@ ESCAPE_RULES = [
 
 
 class BaseYqlTypeCompiler(StrSQLTypeCompiler):
+    def visit_UUID(self, type_: types.YqlUUID, **kw):
+        return "UUID"
+
     def visit_JSON(self, type_: Union[sa.JSON, types.YqlJSON], **kw):
         return "JSON"
 
@@ -176,6 +179,12 @@ class BaseYqlTypeCompiler(StrSQLTypeCompiler):
     ) -> Union[ydb.PrimitiveType, ydb.AbstractTypeBuilder]:
         if isinstance(type_, sa.TypeDecorator):
             type_ = type_.impl
+
+        if isinstance(type_, types.YqlUUID):
+            ydb_type = ydb.PrimitiveType.UUID
+            if is_optional:
+                return ydb.OptionalType(ydb_type)
+            return ydb_type
 
         if isinstance(type_, (sa.Text, sa.String)):
             ydb_type = ydb.PrimitiveType.Utf8
@@ -297,6 +306,8 @@ class BaseYqlCompiler(StrSQLCompiler):
 
     def render_literal_value(self, value, type_):
         if isinstance(value, str):
+            if isinstance(type_.dialect_impl(self.dialect), types.YqlUUID):
+                return super().render_literal_value(value, type_)
             for pattern, replacement in ESCAPE_RULES:
                 value = value.replace(pattern, replacement)
             return f"'{value}'"

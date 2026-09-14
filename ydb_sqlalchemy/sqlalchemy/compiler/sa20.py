@@ -24,6 +24,12 @@ class YqlTypeCompiler(BaseYqlTypeCompiler):
         if isinstance(type_, sa.TypeDecorator):
             type_ = type_.impl
 
+        if isinstance(type_, sa.UUID):
+            ydb_type = ydb.PrimitiveType.UUID
+            if is_optional:
+                return ydb.OptionalType(ydb_type)
+            return ydb_type
+
         if isinstance(type_, sa.Uuid):
             ydb_type = ydb.PrimitiveType.Utf8
             if is_optional:
