@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 import uuid
 
 import pytest
@@ -16,10 +16,6 @@ def test_casts():
         sa.cast(expr, types.UInt32),
         sa.cast(expr, types.UInt64),
         sa.cast(expr, types.UInt8),
-        sa.func.String.JoinFromList(
-            sa.func.ListMap(sa.func.TOPFREQ(expr, 5), types.Lambda(lambda x: sa.cast(x, sa.Text))),
-            ", ",
-        ),
     ]
 
     strs = [str(res_expr.compile(dialect=dialect, compile_kwargs={"literal_binds": True})) for res_expr in res_exprs]
@@ -28,17 +24,48 @@ def test_casts():
         "CAST(1/2 AS UInt32)",
         "CAST(1/2 AS UInt64)",
         "CAST(1/2 AS UInt8)",
-        "String::JoinFromList(ListMap(TOPFREQ(1/2, 5), ($x) -> { RETURN CAST($x AS UTF8) ;}), ', ')",
     ]
 
 
-def test_ydb_types():
+def test_lambda_compilation():
+    dialect = YqlDialect()
+    expr = sa.literal_column("1/2")
+    statement = sa.func.String.JoinFromList(
+        sa.func.ListMap(sa.func.TOPFREQ(expr, 5), types.Lambda(lambda x: sa.cast(x, sa.Text))),
+        ", ",
+    )
+
+    compiled = statement.compile(dialect=dialect, compile_kwargs={"literal_binds": True})
+
+    assert str(compiled) == (
+        "String::JoinFromList(ListMap(TOPFREQ(1/2, 5), ($x) -> { RETURN CAST($x AS UTF8) ;}), ', ')"
+    )
+
+
+@pytest.mark.parametrize(
+    "type_,value,expected",
+    [
+        (types.YqlDate(), date(1996, 11, 19), "Date('1996-11-19')"),
+        (types.YqlDate32(), date(1996, 11, 19), "Date32(Date('1996-11-19'))"),
+        (
+            types.YqlTimestamp64(),
+            datetime(1996, 11, 19, 12, 34, 56, 789),
+            "Timestamp64('1996-11-19 12:34:56.000789')",
+        ),
+        (
+            types.YqlDateTime64(),
+            datetime(1996, 11, 19, 12, 34, 56, 789),
+            "DateTime64('1996-11-19 12:34:56.000789')",
+        ),
+    ],
+)
+def test_datetime_literal_compilation(type_, value, expected):
     dialect = YqlDialect()
 
-    query = sa.literal(date(1996, 11, 19))
+    query = sa.literal(value, type_=type_)
     compiled = query.compile(dialect=dialect, compile_kwargs={"literal_binds": True})
 
-    assert str(compiled) == "Date('1996-11-19')"
+    assert str(compiled) == expected
 
 
 def test_binary_type():
@@ -219,3 +246,18 @@ def test_optional_type_compilation():
     # get_ydb_type returns ydb.PrimitiveType.Int64 (enum) wrapped in OptionalType.
     # OptionalType.item is the inner type.
     assert ydb_type.item == ydb.PrimitiveType.Int64
+
+
+def test_bind_expression_uses_runtime_parameter_type():
+    class StringAsInt(sa.TypeDecorator):
+        impl = sa.String(50)
+        cache_ok = True
+
+        def bind_expression(self, bindvalue):
+            return sa.cast(bindvalue, sa.String(50))
+
+    dialect = YqlDialect()
+    table = sa.Table("type_decorator", sa.MetaData(), sa.Column("value", StringAsInt()))
+    compiled = table.insert().compile(dialect=dialect, column_keys=["value"])
+
+    assert str(compiled.get_bind_types({"value": 42})["value"]) == "Int64?"

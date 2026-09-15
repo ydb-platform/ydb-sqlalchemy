@@ -371,7 +371,7 @@ class BaseYqlCompiler(StrSQLCompiler):
         return arg_sql
 
     def _is_bound_to_nullable_column(self, bind_name: str) -> bool:
-        if bind_name in self.column_keys and hasattr(self.compile_state, "dml_table"):
+        if self.column_keys and bind_name in self.column_keys and hasattr(self.compile_state, "dml_table"):
             if bind_name in self.compile_state.dml_table.c:
                 column = self.compile_state.dml_table.c[bind_name]
                 # Lightweight constructs built with sa.table()/sa.column() -- the form
@@ -388,6 +388,13 @@ class BaseYqlCompiler(StrSQLCompiler):
     ) -> Optional[sa.types.TypeEngine]:
         bind_type = bind.type
         if bind.expanding or (isinstance(bind.type, sa.types.NullType) and post_compile_bind_values):
+            not_null_values = [v for v in post_compile_bind_values if v is not None]
+            if not_null_values:
+                bind_type = _bindparam("", not_null_values[0]).type
+        elif isinstance(bind_type, sa.TypeDecorator) and bind_type._has_bind_expression:
+            # The bind expression describes the target of a SQL-side cast, not
+            # the type of the value sent to YDB.  YDB parameters are strongly
+            # typed, so derive their source type from the runtime value.
             not_null_values = [v for v in post_compile_bind_values if v is not None]
             if not_null_values:
                 bind_type = _bindparam("", not_null_values[0]).type

@@ -7,7 +7,7 @@ Requirements
 ------------
 
 * Python 3.7 or higher
-* SQLAlchemy 1.4+ or 2.0+ (recommended)
+* SQLAlchemy 1.4 or 2.0
 * YDB Python SDK
 
 Installing from PyPI
