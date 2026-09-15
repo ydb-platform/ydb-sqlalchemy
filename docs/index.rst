@@ -18,12 +18,12 @@ Welcome to the YDB SQLAlchemy dialect documentation. This package provides a SQL
 Overview
 --------
 
-YDB SQLAlchemy is a dialect that enables SQLAlchemy to work with YDB databases. It supports both SQLAlchemy 2.0 (fully tested) and SQLAlchemy 1.4 (partially tested).
+YDB SQLAlchemy is a dialect that enables SQLAlchemy to work with YDB databases. It supports and tests both SQLAlchemy 1.4 and 2.0.
 
 Key Features:
 ~~~~~~~~~~~~~
 
-* **SQLAlchemy 2.0 Support**: Full compatibility with the latest SQLAlchemy version
+* **SQLAlchemy 1.4 and 2.0 Support**: Core, ORM, synchronous, and asynchronous scenarios are tested on both release lines
 * **Async/Await Support**: Full async support with ``yql+ydb_async`` dialect
 * **Core and ORM**: Support for both SQLAlchemy Core and ORM patterns
 * **Authentication**: Multiple authentication methods including static credentials, tokens, and service accounts

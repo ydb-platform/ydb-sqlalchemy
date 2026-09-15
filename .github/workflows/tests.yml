@@ -19,7 +19,7 @@ jobs:
       max-parallel: 4
       matrix:
         python-version: [3.9]
-        environment: [test-unit, test-dialect]
+        environment: [test-unit, test-dialect, test-unit-sa14, test-dialect-sa14]
 
     steps:
     - uses: actions/checkout@v1

@@ -1,6 +1,7 @@
 import ctypes
 import datetime
 import decimal
+import uuid
 
 import pytest
 import sqlalchemy as sa
@@ -111,6 +112,10 @@ class ComponentReflectionTest(_ComponentReflectionTest):
             if "constrained_columns" in err_info and "contains one more item: 'data'" in err_info:
                 return "We changed primary_keys in define_reflected_tables method so this will fail"
             raise
+
+    @pytest.mark.skip("YDB index reflection is covered by TestSecondaryIndex")
+    def test_get_indexes(self, connection, use_schema):
+        pass
 
     @classmethod
     def define_reflected_tables(cls, metadata, schema):
@@ -240,14 +245,18 @@ class HasTableTest(_HasTableTest):
     def test_has_table_cache(self, metadata):
         insp = inspect(config.db)
         is_true(insp.has_table("test_table"))
-        # table without pk unsupported
-        nt = Table("new_table", metadata, Column("col", Integer, primary_key=True))
-        is_false(insp.has_table("new_table"))
+        table_name = f"ydb_has_table_cache_{uuid.uuid4().hex[:8]}"
+        nt = Table(table_name, metadata, Column("col", Integer, primary_key=True))
+        is_false(insp.has_table(table_name))
         nt.create(config.db)
         try:
-            is_false(insp.has_table("new_table"))
-            insp.clear_cache()
-            is_true(insp.has_table("new_table"))
+            if OLD_SA:
+                # Inspector.has_table() did not use its info cache in 1.4.
+                is_true(insp.has_table(table_name))
+            else:
+                is_false(insp.has_table(table_name))
+                insp.clear_cache()
+            is_true(insp.has_table(table_name))
         finally:
             nt.drop(config.db)
 
