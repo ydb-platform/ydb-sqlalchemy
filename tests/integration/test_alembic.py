@@ -135,9 +135,16 @@ def sync_url():
     return url
 
 
+def commit(connection) -> None:
+    if hasattr(connection, "commit"):
+        connection.commit()
+    else:
+        connection.connection.commit()
+
+
 @pytest.fixture
 def engine(sync_url):
-    engine = sa.create_engine(sync_url, poolclass=sa.pool.NullPool)
+    engine = sa.create_engine(sync_url, poolclass=sa.pool.NullPool, future=True)
     yield engine
     engine.dispose()
 
@@ -157,7 +164,7 @@ def drop_tables(engine, *names) -> None:
             continue
         with engine.connect() as conn:
             sa.Table(name, sa.MetaData()).drop(conn)
-            conn.commit()
+            commit(conn)
 
 
 class AlembicEnv:
@@ -612,10 +619,10 @@ class TestOperations(TestBase):
 
         with engine.connect() as conn:
             conn.execute(sa.text(f"UPSERT INTO `{table_name}` (id, name) VALUES (1, 'dup')"))
-            conn.commit()
+            commit(conn)
         with engine.connect() as conn:
             conn.execute(sa.text(f"UPSERT INTO `{table_name}` (id, name) VALUES (2, 'dup')"))
-            conn.commit()
+            commit(conn)
         with engine.connect() as conn:
             rows = conn.execute(sa.text(f"SELECT name FROM `{table_name}` WHERE name = 'dup'")).fetchall()
         assert len(rows) == 2, "the duplicate would be rejected if the index were unique"
@@ -858,14 +865,14 @@ class TestAutogenerate(TestBase):
         metadata = self._model(table_name)
         with engine.connect() as conn:
             metadata.create_all(conn)
-            conn.commit()
+            commit(conn)
 
         assert self._diff(engine, metadata, table_name) == []
 
     def test_detects_added_column(self, engine, table_name):
         with engine.connect() as conn:
             self._model(table_name).create_all(conn)
-            conn.commit()
+            commit(conn)
 
         diff = self._diff(engine, self._model(table_name, extra_column=True), table_name)
 
@@ -875,7 +882,7 @@ class TestAutogenerate(TestBase):
     def test_detects_removed_column(self, engine, table_name):
         with engine.connect() as conn:
             self._model(table_name).create_all(conn)
-            conn.commit()
+            commit(conn)
 
         diff = self._diff(engine, self._model(table_name, drop_name=True), table_name)
 
@@ -885,7 +892,7 @@ class TestAutogenerate(TestBase):
     def test_detects_added_index(self, engine, table_name):
         with engine.connect() as conn:
             self._model(table_name).create_all(conn)
-            conn.commit()
+            commit(conn)
 
         diff = self._diff(engine, self._model(table_name, index=True), table_name)
 
@@ -895,7 +902,7 @@ class TestAutogenerate(TestBase):
     def test_detects_removed_index(self, engine, table_name):
         with engine.connect() as conn:
             self._model(table_name, index=True).create_all(conn)
-            conn.commit()
+            commit(conn)
 
         diff = self._diff(engine, self._model(table_name), table_name)
 
@@ -905,7 +912,7 @@ class TestAutogenerate(TestBase):
     def test_detects_removed_table(self, engine, table_name):
         with engine.connect() as conn:
             self._model(table_name).create_all(conn)
-            conn.commit()
+            commit(conn)
 
         diff = self._diff(engine, sa.MetaData(), table_name)
 

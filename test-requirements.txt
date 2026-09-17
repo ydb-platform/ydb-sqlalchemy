@@ -1,7 +1,6 @@
 pyyaml==5.3.1
 greenlet
 
-sqlalchemy==2.0.7
 ydb >= 3.18.8
 ydb-dbapi >= 0.1.1
 # 1.14 added DefaultImpl.version_table_impl, which ydb_sqlalchemy.alembic overrides

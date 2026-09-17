@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import datetime
 import uuid
@@ -119,7 +121,7 @@ class TestCrud(TablesTest):
 
     def test_sa_crud_with_add_declare(self):
         engine = sa.create_engine(config.db_url, _add_declare_for_yql_stmt_vars=True)
-        with engine.connect() as connection:
+        with engine.begin() as connection:
             self.test_sa_crud(connection)
 
 
@@ -562,17 +564,16 @@ class TestTransaction(TablesTest):
             Column("id", Integer, primary_key=True),
         )
 
-    @pytest.mark.skipif(sa.__version__ < "2.", reason="Something was different in SA<2, good to fix")
     def test_rollback(self, connection_no_trans, connection):
         table = self.tables.test
 
         connection_no_trans.execution_options(isolation_level=IsolationLevel.SERIALIZABLE)
-        with connection_no_trans.begin():
+        with connection_no_trans.begin() as transaction:
             stm1 = table.insert().values(id=1)
             connection_no_trans.execute(stm1)
             stm2 = table.insert().values(id=2)
             connection_no_trans.execute(stm2)
-            connection_no_trans.rollback()
+            transaction.rollback()
 
         cursor = connection.execute(sa.select(table))
         result = cursor.fetchall()
@@ -1107,6 +1108,7 @@ class TestSecondaryIndex(TestBase):
             )
             .select_from(persons)
             .with_hint(persons, "VIEW `ix_tax_number_cover_full_name`")
+            .subquery()
         )
         select_stmt = (
             sa.select(persons_indexed.c.full_name, person_status.c.status)

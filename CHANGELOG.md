@@ -1,3 +1,4 @@
+* Fix SQLAlchemy 1.4 compatibility and test the full dialect against SQLAlchemy 1.4.54
 * Add opt-in support for YDB's native UUID type via `sa.UUID` or `types.YqlUUID` while keeping `sa.Uuid` stored as `Utf8`
 
 ## 0.1.24 ##
