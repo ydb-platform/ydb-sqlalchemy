@@ -68,6 +68,9 @@ ESCAPE_RULES = [
 
 
 class BaseYqlTypeCompiler(StrSQLTypeCompiler):
+    def visit_UUID(self, type_: types.YqlUUID, **kw):
+        return "UUID"
+
     def visit_JSON(self, type_: Union[sa.JSON, types.YqlJSON], **kw):
         return "JSON"
 
@@ -177,6 +180,12 @@ class BaseYqlTypeCompiler(StrSQLTypeCompiler):
         if isinstance(type_, sa.TypeDecorator):
             type_ = type_.impl
 
+        if isinstance(type_, types.YqlUUID):
+            ydb_type = ydb.PrimitiveType.UUID
+            if is_optional:
+                return ydb.OptionalType(ydb_type)
+            return ydb_type
+
         if isinstance(type_, (sa.Text, sa.String)):
             ydb_type = ydb.PrimitiveType.Utf8
 
@@ -270,6 +279,10 @@ class BaseYqlCompiler(StrSQLCompiler):
     def get_from_hint_text(self, table, text):
         return text
 
+    def visit_table(self, table, use_schema=True, **kwargs):
+        # supports_schemas=False: never emit a schema qualifier in FROM/hint clauses.
+        return super().visit_table(table, use_schema=False, **kwargs)
+
     def group_by_clause(self, select, **kw):
         # Hack to ensure it is possible to define labels in groupby.
         kw.update(within_columns_clause=True)
@@ -293,6 +306,8 @@ class BaseYqlCompiler(StrSQLCompiler):
 
     def render_literal_value(self, value, type_):
         if isinstance(value, str):
+            if isinstance(type_.dialect_impl(self.dialect), types.YqlUUID):
+                return super().render_literal_value(value, type_)
             for pattern, replacement in ESCAPE_RULES:
                 value = value.replace(pattern, replacement)
             return f"'{value}'"
@@ -356,10 +371,16 @@ class BaseYqlCompiler(StrSQLCompiler):
         return arg_sql
 
     def _is_bound_to_nullable_column(self, bind_name: str) -> bool:
-        if bind_name in self.column_keys and hasattr(self.compile_state, "dml_table"):
+        if self.column_keys and bind_name in self.column_keys and hasattr(self.compile_state, "dml_table"):
             if bind_name in self.compile_state.dml_table.c:
                 column = self.compile_state.dml_table.c[bind_name]
-                return column.nullable and not column.primary_key
+                # Lightweight constructs built with sa.table()/sa.column() -- the form
+                # alembic documents for op.bulk_insert() -- yield ColumnClause objects,
+                # which carry neither nullable nor primary_key. Fall back to the same
+                # answer as for a column that is not part of the statement at all.
+                nullable = getattr(column, "nullable", False)
+                primary_key = getattr(column, "primary_key", False)
+                return nullable and not primary_key
         return False
 
     def _guess_bound_variable_type_by_parameters(
@@ -367,6 +388,13 @@ class BaseYqlCompiler(StrSQLCompiler):
     ) -> Optional[sa.types.TypeEngine]:
         bind_type = bind.type
         if bind.expanding or (isinstance(bind.type, sa.types.NullType) and post_compile_bind_values):
+            not_null_values = [v for v in post_compile_bind_values if v is not None]
+            if not_null_values:
+                bind_type = _bindparam("", not_null_values[0]).type
+        elif isinstance(bind_type, sa.TypeDecorator) and bind_type._has_bind_expression:
+            # The bind expression describes the target of a SQL-side cast, not
+            # the type of the value sent to YDB.  YDB parameters are strongly
+            # typed, so derive their source type from the runtime value.
             not_null_values = [v for v in post_compile_bind_values if v is not None]
             if not_null_values:
                 bind_type = _bindparam("", not_null_values[0]).type
@@ -529,6 +557,10 @@ class BaseYqlIdentifierPreparer(IdentifierPreparer):
             initial_quote="`",
             final_quote="`",
         )
+
+    def format_table(self, table, use_schema=True, name=None):
+        # supports_schemas=False: never emit a schema qualifier in DML/DDL.
+        return super().format_table(table, use_schema=False, name=name)
 
     def format_index(self, index: sa.Index) -> str:
         return super().format_index(index).replace("/", "_")

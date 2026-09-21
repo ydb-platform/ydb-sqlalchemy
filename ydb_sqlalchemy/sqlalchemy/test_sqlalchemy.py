@@ -1,5 +1,9 @@
-from datetime import date
+from datetime import date, datetime
+import uuid
+
+import pytest
 import sqlalchemy as sa
+import ydb
 
 from . import YqlDialect, types
 
@@ -12,10 +16,6 @@ def test_casts():
         sa.cast(expr, types.UInt32),
         sa.cast(expr, types.UInt64),
         sa.cast(expr, types.UInt8),
-        sa.func.String.JoinFromList(
-            sa.func.ListMap(sa.func.TOPFREQ(expr, 5), types.Lambda(lambda x: sa.cast(x, sa.Text))),
-            ", ",
-        ),
     ]
 
     strs = [str(res_expr.compile(dialect=dialect, compile_kwargs={"literal_binds": True})) for res_expr in res_exprs]
@@ -24,17 +24,48 @@ def test_casts():
         "CAST(1/2 AS UInt32)",
         "CAST(1/2 AS UInt64)",
         "CAST(1/2 AS UInt8)",
-        "String::JoinFromList(ListMap(TOPFREQ(1/2, 5), ($x) -> { RETURN CAST($x AS UTF8) ;}), ', ')",
     ]
 
 
-def test_ydb_types():
+def test_lambda_compilation():
+    dialect = YqlDialect()
+    expr = sa.literal_column("1/2")
+    statement = sa.func.String.JoinFromList(
+        sa.func.ListMap(sa.func.TOPFREQ(expr, 5), types.Lambda(lambda x: sa.cast(x, sa.Text))),
+        ", ",
+    )
+
+    compiled = statement.compile(dialect=dialect, compile_kwargs={"literal_binds": True})
+
+    assert str(compiled) == (
+        "String::JoinFromList(ListMap(TOPFREQ(1/2, 5), ($x) -> { RETURN CAST($x AS UTF8) ;}), ', ')"
+    )
+
+
+@pytest.mark.parametrize(
+    "type_,value,expected",
+    [
+        (types.YqlDate(), date(1996, 11, 19), "Date('1996-11-19')"),
+        (types.YqlDate32(), date(1996, 11, 19), "Date32(Date('1996-11-19'))"),
+        (
+            types.YqlTimestamp64(),
+            datetime(1996, 11, 19, 12, 34, 56, 789),
+            "Timestamp64('1996-11-19 12:34:56.000789')",
+        ),
+        (
+            types.YqlDateTime64(),
+            datetime(1996, 11, 19, 12, 34, 56, 789),
+            "DateTime64('1996-11-19 12:34:56.000789')",
+        ),
+    ],
+)
+def test_datetime_literal_compilation(type_, value, expected):
     dialect = YqlDialect()
 
-    query = sa.literal(date(1996, 11, 19))
+    query = sa.literal(value, type_=type_)
     compiled = query.compile(dialect=dialect, compile_kwargs={"literal_binds": True})
 
-    assert str(compiled) == "Date('1996-11-19')"
+    assert str(compiled) == expected
 
 
 def test_binary_type():
@@ -114,6 +145,78 @@ def test_types_compilation():
     assert compile_type(struct) == "Struct<a:Int32,b:List<Int32>>"
 
 
+def test_native_uuid_is_explicit_opt_in():
+    dialect = YqlDialect()
+    type_compiler = dialect.type_compiler
+
+    assert type_compiler.process(types.YqlUUID()) == "UUID"
+    assert type_compiler.get_ydb_type(types.YqlUUID(), is_optional=False) == ydb.PrimitiveType.UUID
+    assert type_compiler.get_ydb_type(types.YqlUUID(), is_optional=True).item == ydb.PrimitiveType.UUID
+
+    if not hasattr(sa, "Uuid"):
+        return
+
+    assert dialect.supports_native_uuid is False
+    assert type_compiler.process(sa.Uuid()) == "UTF8"
+    assert type_compiler.get_ydb_type(sa.Uuid(), is_optional=False) == ydb.PrimitiveType.Utf8
+    assert type_compiler.process(sa.UUID()) == "UUID"
+    assert type_compiler.get_ydb_type(sa.UUID(), is_optional=False) == ydb.PrimitiveType.UUID
+
+    dialect_impl = sa.UUID(as_uuid=False).dialect_impl(dialect)
+    assert isinstance(dialect_impl, types.YqlUUID)
+    assert dialect_impl.as_uuid is False
+
+
+def test_native_uuid_processors():
+    dialect = YqlDialect()
+    value = uuid.uuid4()
+    uuid_type = types.YqlUUID()
+
+    bind_processor = uuid_type.bind_processor(dialect)
+    assert bind_processor(None) is None
+    assert bind_processor(value) == value
+    assert bind_processor(str(value)) == value
+    with pytest.raises(ValueError):
+        bind_processor("not-a-uuid")
+
+    result_processor = uuid_type.result_processor(dialect, None)
+    assert result_processor(None) is None
+    assert result_processor(value) == value
+    assert result_processor(str(value)) == value
+    assert uuid_type.literal_processor(dialect)(value) == f'Uuid("{value}")'
+
+    text_uuid_type = types.YqlUUID(as_uuid=False)
+    assert text_uuid_type.bind_processor(dialect)(str(value)) == value
+    assert text_uuid_type.result_processor(dialect, None)(value) == str(value)
+
+    text_literal = sa.literal(str(value), text_uuid_type)
+    assert str(text_literal.compile(dialect=dialect, compile_kwargs={"literal_binds": True})) == f'Uuid("{value}")'
+
+
+def test_statement_prefixes_prepended_to_query():
+    dialect = YqlDialect(_statement_prefixes_list=["PRAGMA DistinctOverKeys;"])
+    result = dialect._apply_statement_prefixes_impl("SELECT 1")
+    assert result == "PRAGMA DistinctOverKeys;\nSELECT 1"
+
+
+def test_statement_prefixes_empty_list_unchanged():
+    dialect = YqlDialect(_statement_prefixes_list=[])
+    result = dialect._apply_statement_prefixes_impl("SELECT 1")
+    assert result == "SELECT 1"
+
+
+def test_statement_prefixes_none_unchanged():
+    dialect = YqlDialect()
+    result = dialect._apply_statement_prefixes_impl("SELECT 1")
+    assert result == "SELECT 1"
+
+
+def test_statement_prefixes_multiple():
+    dialect = YqlDialect(_statement_prefixes_list=["PRAGMA Foo;", "PRAGMA Bar;"])
+    result = dialect._apply_statement_prefixes_impl("SELECT 1")
+    assert result == "PRAGMA Foo;\nPRAGMA Bar;\nSELECT 1"
+
+
 def test_optional_type_compilation():
     dialect = YqlDialect()
     type_compiler = dialect.type_compiler
@@ -143,3 +246,18 @@ def test_optional_type_compilation():
     # get_ydb_type returns ydb.PrimitiveType.Int64 (enum) wrapped in OptionalType.
     # OptionalType.item is the inner type.
     assert ydb_type.item == ydb.PrimitiveType.Int64
+
+
+def test_bind_expression_uses_runtime_parameter_type():
+    class StringAsInt(sa.TypeDecorator):
+        impl = sa.String(50)
+        cache_ok = True
+
+        def bind_expression(self, bindvalue):
+            return sa.cast(bindvalue, sa.String(50))
+
+    dialect = YqlDialect()
+    table = sa.Table("type_decorator", sa.MetaData(), sa.Column("value", StringAsInt()))
+    compiled = table.insert().compile(dialect=dialect, column_keys=["value"])
+
+    assert str(compiled.get_bind_types({"value": 42})["value"]) == "Int64?"

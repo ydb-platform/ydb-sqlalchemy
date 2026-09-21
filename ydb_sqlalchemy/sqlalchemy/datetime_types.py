@@ -4,14 +4,26 @@ from typing import Optional
 from sqlalchemy import types as sqltypes
 
 
+def _iso_literal(value):
+    if isinstance(value, datetime.datetime):
+        value = value.isoformat(" ")
+    else:
+        value = value.isoformat()
+    return f"'{value}'"
+
+
+def _literal_processor(parent, constructor):
+    def process(value):
+        literal = parent(value) if parent is not None else _iso_literal(value)
+        return f"{constructor}({literal})"
+
+    return process
+
+
 class YqlDate(sqltypes.Date):
     def literal_processor(self, dialect):
         parent = super().literal_processor(dialect)
-
-        def process(value):
-            return f"Date({parent(value)})"
-
-        return process
+        return _literal_processor(parent, "Date")
 
 
 class YqlTimestamp(sqltypes.TIMESTAMP):
@@ -43,11 +55,7 @@ class YqlDate32(YqlDate):
 
     def literal_processor(self, dialect):
         parent = super().literal_processor(dialect)
-
-        def process(value):
-            return f"Date32({parent(value)})"
-
-        return process
+        return _literal_processor(parent, "Date32")
 
 
 class YqlTimestamp64(YqlTimestamp):
@@ -55,11 +63,7 @@ class YqlTimestamp64(YqlTimestamp):
 
     def literal_processor(self, dialect):
         parent = super().literal_processor(dialect)
-
-        def process(value):
-            return f"Timestamp64({parent(value)})"
-
-        return process
+        return _literal_processor(parent, "Timestamp64")
 
 
 class YqlDateTime64(YqlDateTime):
@@ -67,8 +71,4 @@ class YqlDateTime64(YqlDateTime):
 
     def literal_processor(self, dialect):
         parent = super().literal_processor(dialect)
-
-        def process(value):
-            return f"DateTime64({parent(value)})"
-
-        return process
+        return _literal_processor(parent, "DateTime64")

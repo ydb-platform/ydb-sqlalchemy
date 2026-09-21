@@ -71,6 +71,9 @@ class AdaptedAsyncConnection(AdaptedConnection):
     def get_table_names(self):
         return await_only(self._connection.get_table_names())
 
+    def get_view_names(self):
+        return await_only(self._connection.get_view_names())
+
 
 # TODO(vgvoleg): Migrate to AsyncAdapt_dbapi_cursor and AsyncAdapt_dbapi_connection
 class AdaptedAsyncCursor:

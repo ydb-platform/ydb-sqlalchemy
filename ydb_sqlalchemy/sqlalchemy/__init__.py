@@ -5,6 +5,7 @@ Work in progress, breaking changes are possible.
 
 import collections
 import collections.abc
+import re
 from typing import Any, Mapping, Optional, Sequence, Tuple, Union
 
 import sqlalchemy as sa
@@ -20,10 +21,17 @@ from sqlalchemy.sql.elements import ClauseList
 import ydb_dbapi
 from ydb_sqlalchemy.sqlalchemy.dbapi_adapter import AdaptedAsyncConnection
 from ydb_sqlalchemy.sqlalchemy.dml import Upsert
+from ydb_sqlalchemy.sqlalchemy.retry import (  # noqa: F401
+    retry_ydb,
+    retry_ydb_operation,
+    retry_ydb_operation_async,
+)
 
 from ydb_sqlalchemy.sqlalchemy.compiler import YqlCompiler, YqlDDLCompiler, YqlIdentifierPreparer, YqlTypeCompiler
 
 from . import types
+
+from .._version import VERSION
 
 
 OLD_SA = sa.__version__ < "2."
@@ -70,7 +78,15 @@ COLUMN_TYPES = {
     ydb.PrimitiveType.Interval64: sa.INTEGER,
     ydb.PrimitiveType.Bool: sa.BOOLEAN,
     ydb.PrimitiveType.DyNumber: sa.TEXT,
+    ydb.PrimitiveType.UUID: types.YqlUUID,
 }
+
+DBAPI_COLUMN_TYPES = {
+    ydb_type.name: sa_type for ydb_type, sa_type in COLUMN_TYPES.items() if isinstance(ydb_type, ydb.PrimitiveType)
+}
+
+
+DECIMAL_DBAPI_TYPE_RE = re.compile(r"^Decimal\((\d+),\s*(\d+)\)$")
 
 
 def _get_column_info(t):
@@ -83,6 +99,28 @@ def _get_column_info(t):
         return sa.DECIMAL(precision=t.precision, scale=t.scale), nullable
 
     return COLUMN_TYPES[t], nullable
+
+
+def _get_column_info_from_dbapi_description(type_name):
+    nullable = type_name.endswith("?")
+    if nullable:
+        type_name = type_name[:-1]
+
+    decimal_match = DECIMAL_DBAPI_TYPE_RE.match(type_name)
+    if decimal_match:
+        precision, scale = decimal_match.groups()
+        return sa.DECIMAL(precision=int(precision), scale=int(scale)), nullable
+
+    return DBAPI_COLUMN_TYPES.get(type_name, sa.types.NullType), nullable
+
+
+def _format_reflected_column(name, col_type, nullable):
+    return {
+        "name": name,
+        "type": col_type,
+        "nullable": nullable,
+        "default": None,
+    }
 
 
 class YdbRequestSettingsCharacteristic(characteristics.ConnectionCharacteristic):
@@ -162,6 +200,7 @@ class YqlDialect(StrCompileDialect):
         sa.types.LargeBinary: types.Binary,
         sa.types.BLOB: types.Binary,
         sa.types.ARRAY: types.ListType,
+        **({sa.types.UUID: types.YqlUUID} if not OLD_SA else {}),
     }
 
     connection_characteristics = util.immutabledict(
@@ -207,6 +246,7 @@ class YqlDialect(StrCompileDialect):
         json_serializer=None,
         json_deserializer=None,
         _add_declare_for_yql_stmt_vars=False,
+        _statement_prefixes_list=None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -216,11 +256,11 @@ class YqlDialect(StrCompileDialect):
         # NOTE: _add_declare_for_yql_stmt_vars is temporary and is soon to be removed.
         # no need in declare in yql statement here since ydb 24-1
         self._add_declare_for_yql_stmt_vars = _add_declare_for_yql_stmt_vars
+        self._statement_prefixes = tuple(_statement_prefixes_list) if _statement_prefixes_list else ()
 
     def _describe_table(self, connection, table_name, schema=None) -> ydb.TableDescription:
-        if schema is not None:
-            raise ydb_dbapi.NotSupportedError("unsupported on non empty schema")
-
+        # supports_schemas=False: the schema argument is ignored, reflection always
+        # targets the connected database.
         qt = table_name if isinstance(table_name, str) else table_name.name
         raw_conn = connection.connection
         try:
@@ -228,8 +268,19 @@ class YqlDialect(StrCompileDialect):
         except ydb_dbapi.DatabaseError as e:
             raise NoSuchTableError(qt) from e
 
-    def get_view_names(self, connection, schema=None, **kw: Any):
-        return []
+    @reflection.cache
+    def get_view_names(self, connection, schema=None, **kw):
+        raw_conn = connection.connection
+        return raw_conn.get_view_names()
+
+    @reflection.cache
+    def get_view_definition(self, connection, view_name, schema=None, **kw):
+        quoted_view_name = self.identifier_preparer.quote(view_name)
+        result = connection.execute(sa.text(f"SHOW CREATE VIEW {quoted_view_name}"))
+        row = result.fetchone()
+        if row is None:
+            return None
+        return row._mapping.get("CreateQuery") or row[0]
 
     @reflection.cache
     def get_columns(self, connection, table_name, schema=None, **kw):
@@ -237,22 +288,19 @@ class YqlDialect(StrCompileDialect):
         as_compatible = []
         for column in table.columns:
             col_type, nullable = _get_column_info(column.type)
-            as_compatible.append(
-                {
-                    "name": column.name,
-                    "type": col_type,
-                    "nullable": nullable,
-                    "default": None,
-                }
-            )
+            as_compatible.append(_format_reflected_column(column.name, col_type, nullable))
+
+        if not as_compatible:
+            quoted_table_name = self.identifier_preparer.quote(table_name)
+            result = connection.execute(sa.text(f"SELECT * FROM {quoted_table_name} LIMIT 0"))
+            for column in result.cursor.description or []:
+                col_type, nullable = _get_column_info_from_dbapi_description(column[1])
+                as_compatible.append(_format_reflected_column(column[0], col_type, nullable))
 
         return as_compatible
 
     @reflection.cache
     def get_table_names(self, connection, schema=None, **kw):
-        if schema:
-            raise ydb_dbapi.NotSupportedError("unsupported on non empty schema")
-
         raw_conn = connection.connection
         return raw_conn.get_table_names()
 
@@ -351,6 +399,8 @@ class YqlDialect(StrCompileDialect):
             if not kwargs["database"].startswith("/"):
                 kwargs["database"] = "/" + kwargs["database"]
 
+        kwargs["_additional_sdk_headers"] = tuple(["ydb-sqlalchemy/" + VERSION])
+
         return [args, kwargs]
 
     def connect(self, *cargs, **cparams):
@@ -406,6 +456,12 @@ class YqlDialect(StrCompileDialect):
         )
         return f"{declarations}\n{statement}"
 
+    def _apply_statement_prefixes_impl(self, statement: str) -> str:
+        if not self._statement_prefixes:
+            return statement
+        prefixes = "\n".join(self._statement_prefixes) + "\n"
+        return f"{prefixes}{statement}"
+
     def __merge_parameters_values_and_types(
         self, values: Mapping[str, Any], types: Mapping[str, Any], execute_many: bool
     ) -> Sequence[Mapping[str, ydb.TypedValue]]:
@@ -439,9 +495,11 @@ class YqlDialect(StrCompileDialect):
             statement, parameters = self._format_variables(statement, parameters, execute_many)
             if self._add_declare_for_yql_stmt_vars:
                 statement = self._add_declare_for_yql_stmt_vars_impl(statement, parameters_types)
+            statement = self._apply_statement_prefixes_impl(statement)
             return statement, parameters
 
         statement, parameters = self._format_variables(statement, parameters, execute_many)
+        statement = self._apply_statement_prefixes_impl(statement)
         return statement, parameters
 
     def do_ping(self, dbapi_connection: ydb_dbapi.Connection) -> bool:

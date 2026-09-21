@@ -1,3 +1,31 @@
+* Fix SQLAlchemy 1.4 compatibility and test the full dialect against SQLAlchemy 1.4.54
+* Add opt-in support for YDB's native UUID type via `sa.UUID` or `types.YqlUUID` while keeping `sa.Uuid` stored as `Utf8`
+
+## 0.1.24 ##
+* Keep `ydb_sqlalchemy.alembic` importable when the optional Alembic dependency is absent
+
+## 0.1.23 ##
+* Ship the Alembic integration as `ydb_sqlalchemy.alembic`, so `env.py` no longer defines its own `DefaultImpl`
+* Fix parameter binding for statements built on `sa.table()`/`sa.column()`, which broke `alembic.op.bulk_insert()`
+
+## 0.1.22 ##
+* Ignore table schema in reflection and SQL compilation
+
+## 0.1.21 ##
+* Fix dialect import failure on SQLAlchemy 1.4 (drop kwargs annotation on view reflection methods)
+
+## 0.1.20 ##
+* Support YDB view reflection
+
+## 0.1.19 ##
+* Pass lib version to sdk header
+
+## 0.1.18 ##
+* Apply prefixes to DDL as well
+
+## 0.1.17 ##
+* Ability to add prefixes to YQL statements
+
 ## 0.1.16 ##
 * optimize string literal escaping
 * Fix: StructType and ListType can't handle compound types
