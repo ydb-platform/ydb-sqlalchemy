@@ -117,6 +117,10 @@ class ComponentReflectionTest(_ComponentReflectionTest):
     def test_get_indexes(self, connection, use_schema):
         pass
 
+    @pytest.mark.skip("SQLAlchemy's view requirement also assumes unsupported multi-reflection semantics")
+    def test_get_view_names(self, connection, use_schema):
+        pass
+
     @classmethod
     def define_reflected_tables(cls, metadata, schema):
         Table(
@@ -168,10 +172,6 @@ class ComponentReflectionTest(_ComponentReflectionTest):
             schema=schema,
         )
 
-    @pytest.mark.skip("views unsupported")
-    def test_get_view_names(self, connection, use_schema):
-        pass
-
     def test_metadata(self, connection, **kwargs):
         m = MetaData()
         m.reflect(connection, resolve_fks=False)
@@ -207,10 +207,6 @@ class ComponentReflectionTestExtra(_ComponentReflectionTestExtra):
         )
         t.create(connection)
         return [c["type"] for c in inspect(connection).get_columns("t")]
-
-    @pytest.mark.skip("YDB: Only Decimal(22,9) is supported for table columns")
-    def test_numeric_reflection(self):
-        pass
 
     @pytest.mark.skip("TODO: varchar with length unsupported")
     def test_varchar_reflection(self):
@@ -277,10 +273,46 @@ class IntegerTest(_IntegerTest):
         pass
 
 
-@pytest.mark.skip("Use YdbDecimalTest for Decimal type testing")
 class NumericTest(_NumericTest):
-    # SqlAlchemy maybe eat Decimal and throw Double
-    pass
+    @pytest.mark.skip("Float columns cannot be used as YDB primary keys in the upstream fixture")
+    def test_float_as_decimal(self):
+        pass
+
+    @pytest.mark.skip("Float columns cannot be used as YDB primary keys in the upstream fixture")
+    def test_float_as_float(self):
+        pass
+
+    @pytest.mark.skip("YDB numeric bind and literal handling is incomplete")
+    def test_float_coerce_round_trip(self):
+        pass
+
+    @pytest.mark.skip("Float columns cannot be used as YDB primary keys in the upstream fixture")
+    def test_float_custom_scale(self):
+        pass
+
+    @pytest.mark.skip("YDB numeric bind and literal handling is incomplete")
+    def test_numeric_as_decimal(self):
+        pass
+
+    @pytest.mark.skip("YDB numeric bind and literal handling is incomplete")
+    def test_numeric_as_float(self):
+        pass
+
+    @pytest.mark.skip("YDB numeric bind and literal handling is incomplete")
+    def test_numeric_null_as_float(self):
+        pass
+
+    @pytest.mark.skip("Float columns cannot be used as YDB primary keys in the upstream fixture")
+    def test_render_literal_float(self):
+        pass
+
+    @pytest.mark.skip("YDB numeric bind and literal handling is incomplete")
+    def test_render_literal_numeric(self):
+        pass
+
+    @pytest.mark.skip("YDB numeric bind and literal handling is incomplete")
+    def test_render_literal_numeric_asfloat(self):
+        pass
 
 
 class BinaryTest(_BinaryTest):
@@ -316,6 +348,15 @@ if not OLD_SA:
                 ),
                 expected,
             )
+
+
+if OLD_SA:
+    from sqlalchemy.testing.suite.test_select import WindowFunctionTest as _WindowFunctionTest
+
+    class WindowFunctionTest(_WindowFunctionTest):
+        @pytest.mark.skip("YDB window frame offsets require literal rather than bound values")
+        def test_window_rows_between(self, connection):
+            pass
 
 
 class ExistsTest(_ExistsTest):
@@ -510,6 +551,8 @@ class StringTest(_StringTest):
 
 
 class ContainerTypesTest(fixtures.TablesTest):
+    __backend__ = True
+
     @classmethod
     def define_tables(cls, metadata):
         Table(
@@ -600,6 +643,8 @@ class ContainerTypesTest(fixtures.TablesTest):
 
 
 class ConcatTest(fixtures.TablesTest):
+    __backend__ = True
+
     @classmethod
     def define_tables(cls, metadata):
         Table(
@@ -645,13 +690,13 @@ class LongNameBlowoutTest(_LongNameBlowoutTest):
 
 
 class RowFetchTest(_RowFetchTest):
-    @pytest.mark.skip("scalar subquery unsupported")
-    def test_row_w_scalar_select(self, connection):
-        pass
+    pass
 
 
 class DecimalTest(fixtures.TablesTest):
     """Tests for YDB Decimal type using standard sa.DECIMAL"""
+
+    __backend__ = True
 
     @classmethod
     def define_tables(cls, metadata):

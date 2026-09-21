@@ -4,6 +4,10 @@ from sqlalchemy.testing.requirements import SuiteRequirements
 
 class Requirements(SuiteRequirements):
     @property
+    def table_ddl_if_exists(self):
+        return exclusions.open()
+
+    @property
     def json_type(self):
         return exclusions.open()
 
@@ -51,7 +55,21 @@ class Requirements(SuiteRequirements):
 
     @property
     def view_reflection(self):
+        # Basic view reflection is covered separately; SQLAlchemy's flag also
+        # enables unsupported multi-reflection semantics for views.
         return exclusions.closed()
+
+    @property
+    def boolean_col_expressions(self):
+        return exclusions.open()
+
+    @property
+    def tuple_in(self):
+        return exclusions.open()
+
+    @property
+    def window_functions(self):
+        return exclusions.open()
 
     @property
     def unique_constraint_reflection(self):
