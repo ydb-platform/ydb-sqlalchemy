@@ -20,6 +20,33 @@ def _literal_processor(parent, constructor):
     return process
 
 
+def _interval_literal(value: datetime.timedelta) -> str:
+    total_microseconds = (value.days * 24 * 60 * 60 + value.seconds) * 1_000_000 + value.microseconds
+    sign = "-" if total_microseconds < 0 else ""
+    total_microseconds = abs(total_microseconds)
+
+    days, remainder = divmod(total_microseconds, 24 * 60 * 60 * 1_000_000)
+    hours, remainder = divmod(remainder, 60 * 60 * 1_000_000)
+    minutes, remainder = divmod(remainder, 60 * 1_000_000)
+    seconds, microseconds = divmod(remainder, 1_000_000)
+
+    result = f"{sign}P"
+    if days:
+        result += f"{days}D"
+    if hours or minutes or seconds or microseconds or not days:
+        result += "T"
+        if hours:
+            result += f"{hours}H"
+        if minutes:
+            result += f"{minutes}M"
+        if microseconds:
+            result += f"{seconds}.{microseconds:06d}S"
+        elif seconds or not (hours or minutes):
+            result += f"{seconds}S"
+
+    return f"'{result}'"
+
+
 class YqlDate(sqltypes.Date):
     def literal_processor(self, dialect):
         parent = super().literal_processor(dialect)
@@ -72,3 +99,27 @@ class YqlDateTime64(YqlDateTime):
     def literal_processor(self, dialect):
         parent = super().literal_processor(dialect)
         return _literal_processor(parent, "DateTime64")
+
+
+class YqlInterval64(sqltypes.Interval):
+    """Store ``datetime.timedelta`` values using YDB's ``Interval64`` type."""
+
+    __visit_name__ = "interval64"
+    cache_ok = True
+
+    def bind_processor(self, dialect):
+        def process(value: Optional[datetime.timedelta]) -> Optional[datetime.timedelta]:
+            return value
+
+        return process
+
+    def result_processor(self, dialect, coltype):
+        def process(value) -> Optional[datetime.timedelta]:
+            if value is None or isinstance(value, datetime.timedelta):
+                return value
+            return datetime.timedelta(microseconds=value)
+
+        return process
+
+    def literal_processor(self, dialect):
+        return _literal_processor(_interval_literal, "Interval64")

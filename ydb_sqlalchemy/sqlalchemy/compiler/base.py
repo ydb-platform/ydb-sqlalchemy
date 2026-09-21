@@ -154,6 +154,9 @@ class BaseYqlTypeCompiler(StrSQLTypeCompiler):
     def visit_datetime64(self, type_: types.YqlDateTime64, **kw):
         return "DateTime64"
 
+    def visit_interval64(self, type_: types.YqlInterval64, **kw):
+        return "Interval64"
+
     def visit_list_type(self, type_: types.ListType, **kw):
         inner = self.process(type_.item_type, **kw)
         return f"List<{inner}>"
@@ -177,6 +180,12 @@ class BaseYqlTypeCompiler(StrSQLTypeCompiler):
     def get_ydb_type(
         self, type_: sa.types.TypeEngine, is_optional: bool
     ) -> Union[ydb.PrimitiveType, ydb.AbstractTypeBuilder]:
+        if isinstance(type_, types.YqlInterval64):
+            ydb_type = ydb.PrimitiveType.Interval64
+            if is_optional:
+                return ydb.OptionalType(ydb_type)
+            return ydb_type
+
         if isinstance(type_, sa.TypeDecorator):
             type_ = type_.impl
 

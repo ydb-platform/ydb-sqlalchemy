@@ -128,6 +128,11 @@ The following table shows the complete mapping between YDB native types, YDB SQL
      -
      - ``datetime.datetime``
      - Extended timestamp range
+   * - ``Interval64``
+     - :class:`~ydb_sqlalchemy.sqlalchemy.datetime_types.YqlInterval64`
+     -
+     - ``datetime.timedelta``
+     - Extended interval range
    * - ``Json``
      - :class:`~ydb_sqlalchemy.sqlalchemy.json.YqlJSON`
      - ``JSON``
@@ -275,7 +280,7 @@ YDB provides several date and time types:
 
    from ydb_sqlalchemy.sqlalchemy.types import (
        YqlDate, YqlDateTime, YqlTimestamp,
-       YqlDate32, YqlDateTime64, YqlTimestamp64
+       YqlDate32, YqlDateTime64, YqlTimestamp64, YqlInterval64
    )
    from sqlalchemy import DateTime
    import datetime
@@ -303,6 +308,9 @@ YDB provides several date and time types:
        # Timestamp64 - extended range with microsecond precision
        extended_timestamp = Column(YqlTimestamp64)
 
+       # Interval64 - extended range with microsecond precision
+       retention = Column(YqlInterval64)
+
        # Standard SQLAlchemy DateTime also works
        updated_at = Column(DateTime)
 
@@ -318,12 +326,13 @@ YDB provides several date and time types:
        precise_datetime=now,
        precise_time=now,
        extended_timestamp=now,
+       retention=datetime.timedelta(days=50000),
        updated_at=now
    ))
 
 For detailed API reference, see:
 :class:`~ydb_sqlalchemy.sqlalchemy.datetime_types.YqlDate`, :class:`~ydb_sqlalchemy.sqlalchemy.datetime_types.YqlDateTime`, :class:`~ydb_sqlalchemy.sqlalchemy.datetime_types.YqlTimestamp`,
-:class:`~ydb_sqlalchemy.sqlalchemy.datetime_types.YqlDate32`, :class:`~ydb_sqlalchemy.sqlalchemy.datetime_types.YqlDateTime64`, :class:`~ydb_sqlalchemy.sqlalchemy.datetime_types.YqlTimestamp64`.
+:class:`~ydb_sqlalchemy.sqlalchemy.datetime_types.YqlDate32`, :class:`~ydb_sqlalchemy.sqlalchemy.datetime_types.YqlDateTime64`, :class:`~ydb_sqlalchemy.sqlalchemy.datetime_types.YqlTimestamp64`, :class:`~ydb_sqlalchemy.sqlalchemy.datetime_types.YqlInterval64`.
 
 Struct Type
 -----------

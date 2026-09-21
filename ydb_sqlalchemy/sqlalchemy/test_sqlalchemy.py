@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import uuid
 
 import pytest
@@ -57,6 +57,11 @@ def test_lambda_compilation():
             datetime(1996, 11, 19, 12, 34, 56, 789),
             "DateTime64('1996-11-19 12:34:56.000789')",
         ),
+        (
+            types.YqlInterval64(),
+            timedelta(days=2, hours=3, minutes=4, seconds=5, microseconds=6),
+            "Interval64('P2DT3H4M5.000006S')",
+        ),
     ],
 )
 def test_datetime_literal_compilation(type_, value, expected):
@@ -66,6 +71,20 @@ def test_datetime_literal_compilation(type_, value, expected):
     compiled = query.compile(dialect=dialect, compile_kwargs={"literal_binds": True})
 
     assert str(compiled) == expected
+
+
+def test_extended_datetime_type_mapping_and_processors():
+    dialect = YqlDialect()
+    type_compiler = dialect.type_compiler
+    interval_type = types.YqlInterval64()
+    value = timedelta(days=-50_000, microseconds=123)
+
+    assert type_compiler.process(interval_type) == "Interval64"
+    assert type_compiler.get_ydb_type(interval_type, is_optional=False) == ydb.PrimitiveType.Interval64
+    assert type_compiler.get_ydb_type(interval_type, is_optional=True).item == ydb.PrimitiveType.Interval64
+    assert interval_type.bind_processor(dialect)(value) == value
+    assert interval_type.result_processor(dialect, None)(value) == value
+    assert interval_type.result_processor(dialect, None)(123) == timedelta(microseconds=123)
 
 
 def test_binary_type():
