@@ -18,6 +18,7 @@ from ydb_sqlalchemy import sqlalchemy as ydb_sa
 from ydb_sqlalchemy.sqlalchemy import types
 
 _UUID_TABLE_NAME = f"test_uuid_types_{uuid.uuid4().hex[:8]}"
+_EXTENDED_DATETIME_TABLE_NAME = f"test_extended_datetime_types_{uuid.uuid4().hex[:8]}"
 
 if sa.__version__ >= "2.":
     from sqlalchemy import NullPool
@@ -266,6 +267,15 @@ class TestTypes(TablesTest):
             Column("uuid_native", types.YqlUUID),
             Column("uuid_str", sa.Uuid if not ydb_sa.OLD_SA else sa.String),
         )
+        Table(
+            _EXTENDED_DATETIME_TABLE_NAME,
+            metadata,
+            Column("id", Integer, primary_key=True),
+            Column("date32", types.YqlDate32),
+            Column("datetime64", types.YqlDateTime64),
+            Column("timestamp64", types.YqlTimestamp64),
+            Column("interval64", types.YqlInterval64),
+        )
 
     def test_primitive_types(self, connection):
         table = self.tables.test_primitive_types
@@ -390,6 +400,28 @@ class TestTypes(TablesTest):
 
         reflected_type = reflected_metadata.tables[table.name].c.uuid_native.type
         assert isinstance(reflected_type, types.YqlUUID)
+
+    def test_extended_datetime_types_and_reflection(self, connection):
+        table = self.tables[_EXTENDED_DATETIME_TABLE_NAME]
+        values = {
+            "id": 1,
+            "date32": datetime.date(1969, 1, 1),
+            "datetime64": datetime.datetime(1969, 10, 15, 12, 57, 18),
+            "timestamp64": datetime.datetime(1969, 10, 15, 12, 57, 18, 396),
+            "interval64": datetime.timedelta(days=-50_000, microseconds=123),
+        }
+
+        connection.execute(sa.insert(table).values(**values))
+        assert connection.execute(sa.select(table)).one()._mapping == values
+
+        reflected_metadata = sa.MetaData()
+        reflected_metadata.reflect(connection, only=[table.name])
+        reflected_columns = reflected_metadata.tables[table.name].c
+
+        assert isinstance(reflected_columns.date32.type, types.YqlDate32)
+        assert isinstance(reflected_columns.datetime64.type, types.YqlDateTime64)
+        assert isinstance(reflected_columns.timestamp64.type, types.YqlTimestamp64)
+        assert isinstance(reflected_columns.interval64.type, types.YqlInterval64)
 
 
 class TestWithClause(TablesTest):

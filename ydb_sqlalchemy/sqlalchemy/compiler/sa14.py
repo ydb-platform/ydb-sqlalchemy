@@ -6,6 +6,7 @@ from sqlalchemy.exc import CompileError
 from sqlalchemy.sql import literal_column
 from sqlalchemy.util.compat import inspect_getfullargspec
 
+from .. import types
 from .base import (
     BaseYqlCompiler,
     BaseYqlDDLCompiler,
@@ -22,6 +23,9 @@ class YqlTypeCompiler(BaseYqlTypeCompiler):
     def get_ydb_type(
         self, type_: sa.types.TypeEngine, is_optional: bool
     ) -> Union[ydb.PrimitiveType, ydb.AbstractTypeBuilder]:
+        if isinstance(type_, types.YqlInterval64):
+            return super().get_ydb_type(type_, is_optional)
+
         if isinstance(type_, sa.TypeDecorator):
             type_ = type_.impl
 

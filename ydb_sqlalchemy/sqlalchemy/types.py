@@ -12,7 +12,15 @@ else:
 from sqlalchemy import ARRAY, exc, Table, types
 from sqlalchemy.sql import type_api
 
-from .datetime_types import YqlDate, YqlDateTime, YqlTimestamp, YqlDate32, YqlTimestamp64, YqlDateTime64  # noqa: F401
+from .datetime_types import (  # noqa: F401
+    YqlDate,
+    YqlDate32,
+    YqlDateTime,
+    YqlDateTime64,
+    YqlInterval64,
+    YqlTimestamp,
+    YqlTimestamp64,
+)
 from .json import YqlJSON  # noqa: F401
 
 
